@@ -1,0 +1,44 @@
+MONTADOR A4 — 9 FOTOS 6x9 CM
+
+O programa permite:
+- selecionar até 9 fotos;
+- rotacionar cada foto em 90 graus;
+- encaixar automaticamente no formato 6 x 9 cm;
+- criar uma página A4 em 300 DPI;
+- exportar em JPG ou PNG.
+
+COMO INSTALAR
+
+1. Instale o Python 3:
+   https://www.python.org/
+
+2. Abra o Prompt de Comando na pasta do programa.
+
+3. Instale a biblioteca Pillow:
+   pip install pillow
+
+4. Execute:
+   python montador_a4_ui.py
+
+MELHORIA COM IA
+
+Na aba "Chaves de API":
+- cole separadamente as chaves da OpenAI e/ou Gemini;
+- clique em "Salvar chaves".
+
+Na aba "Foto individual":
+- escolha uma foto;
+- selecione OpenAI ou Gemini;
+- descreva a melhoria;
+- clique em "Melhorar com IA".
+
+As chaves são salvas criptografadas pelo Windows e vinculadas ao usuário atual.
+Elas não são gravadas como texto puro.
+O uso das APIs requer internet e pode gerar cobrança pelo provedor.
+
+IMPRESSÃO
+
+- Use papel A4.
+- Escolha escala 100%.
+- Desative "Ajustar à página".
+- As fotos serão geradas com 60 x 90 mm.
