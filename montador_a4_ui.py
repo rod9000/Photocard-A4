@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import uuid
 from ctypes import wintypes
+from datetime import datetime
 from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin
 
 DPI = 300
@@ -32,6 +33,11 @@ MUTED = "#6E6E6E"
 BORDER = "#D9D3C7"
 API_KEYS_FILE = Path(__file__).with_name(".api_keys.dat")
 WHEEL_SCROLL_LINES = 3
+SAVE_DATE_FORMAT = "%d-%m-%Y %H-%M-%S"
+
+
+def save_timestamp():
+    return datetime.now().strftime(SAVE_DATE_FORMAT)
 
 
 class DataBlob(ctypes.Structure):
@@ -48,6 +54,30 @@ class DOCINFO(ctypes.Structure):
         ("lpszOutput", wintypes.LPCWSTR),
         ("lpszDatatype", wintypes.LPCWSTR),
         ("fwType", wintypes.DWORD),
+    ]
+
+
+class PRINTDLGW(ctypes.Structure):
+    _fields_ = [
+        ("lStructSize", wintypes.DWORD),
+        ("hwndOwner", wintypes.HWND),
+        ("hDevMode", wintypes.HGLOBAL),
+        ("hDevNames", wintypes.HGLOBAL),
+        ("hDC", wintypes.HDC),
+        ("Flags", wintypes.DWORD),
+        ("nFromPage", wintypes.WORD),
+        ("nToPage", wintypes.WORD),
+        ("nMinPage", wintypes.WORD),
+        ("nMaxPage", wintypes.WORD),
+        ("nCopies", wintypes.WORD),
+        ("hInstance", wintypes.HINSTANCE),
+        ("lCustData", wintypes.LPARAM),
+        ("lpfnPrintHook", ctypes.c_void_p),
+        ("lpfnSetupHook", ctypes.c_void_p),
+        ("lpPrintTemplateName", wintypes.LPCWSTR),
+        ("lpSetupTemplateName", wintypes.LPCWSTR),
+        ("hPrintTemplate", wintypes.HGLOBAL),
+        ("hSetupTemplate", wintypes.HGLOBAL),
     ]
 
 
@@ -885,7 +915,7 @@ class App:
             path = filedialog.asksaveasfilename(
                 title="Salvar lapela",
                 defaultextension=".png",
-                initialfile=f"lapela_{width_cm:g}x{height_cm:g}cm",
+                initialfile=f"lapela_{width_cm:g}x{height_cm:g}cm_{save_timestamp()}",
                 filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg")]
             )
         except KeyboardInterrupt:
@@ -1025,7 +1055,7 @@ class App:
             path = filedialog.asksaveasfilename(
                 title="Salvar folha A4 de lapelas",
                 defaultextension=".jpg",
-                initialfile=f"folha_A4_lapelas_{width_cm:g}x{height_cm:g}",
+                initialfile=f"folha_A4_lapelas_{width_cm:g}x{height_cm:g}_{save_timestamp()}",
                 filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
             )
         except KeyboardInterrupt:
@@ -1046,52 +1076,73 @@ class App:
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
 
-    def get_default_printer(self):
-        size = wintypes.DWORD(0)
-        ctypes.windll.winspool.GetDefaultPrinterW(None, ctypes.byref(size))
-        if size.value == 0:
-            return None
-        buffer = ctypes.create_unicode_buffer(size.value)
-        ctypes.windll.winspool.GetDefaultPrinterW(
-            buffer, ctypes.byref(size)
-        )
-        return buffer.value or None
+    def _show_windows_print_dialog(self):
+        try:
+            comdlg = ctypes.WinDLL("C:/Windows/System32/comdlg32.dll")
+        except OSError:
+            return None, None, None
+        comdlg.PrintDlgW.argtypes = [ctypes.POINTER(PRINTDLGW)]
+        comdlg.PrintDlgW.restype = wintypes.BOOL
+        pd = PRINTDLGW()
+        pd.lStructSize = ctypes.sizeof(PRINTDLGW)
+        pd.hwndOwner = self.root.winfo_id()
+        pd.Flags = 0x00000100
+        pd.nMinPage = 1
+        pd.nMaxPage = 1
+        pd.nFromPage = 1
+        pd.nToPage = 1
+        pd.nCopies = 1
+        if not comdlg.PrintDlgW(ctypes.byref(pd)):
+            return None, None, None
+        return pd.hDC, pd.hDevMode, pd.hDevNames
 
     def print_image(self, sheet, doc_name):
-        printer = self.get_default_printer()
-        if not printer:
-            messagebox.showwarning(
-                "Impressora",
-                "Nenhuma impressora padrão foi encontrada no Windows."
-            )
+        hdc, hdev_mode, hdev_names = self._show_windows_print_dialog()
+        if not hdc:
             return False
-        hdc = None
         try:
-            hdc = ctypes.windll.gdi32.CreateDCW("WINSPOOL", printer, None, None)
-            if not hdc:
-                raise ctypes.WinError()
+            gdi32 = ctypes.windll.gdi32
+            gdi32.CreateDCW.argtypes = [
+                wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                ctypes.c_void_p
+            ]
+            gdi32.CreateDCW.restype = wintypes.HDC
+            gdi32.StartDocW.argtypes = [
+                wintypes.HDC, ctypes.POINTER(DOCINFO)
+            ]
+            gdi32.StartDocW.restype = ctypes.c_int
+            gdi32.StartPage.argtypes = [wintypes.HDC]
+            gdi32.StartPage.restype = ctypes.c_int
+            gdi32.EndPage.argtypes = [wintypes.HDC]
+            gdi32.EndPage.restype = ctypes.c_int
+            gdi32.EndDoc.argtypes = [wintypes.HDC]
+            gdi32.EndDoc.restype = ctypes.c_int
+            gdi32.GetDeviceCaps.argtypes = [wintypes.HDC, ctypes.c_int]
+            gdi32.GetDeviceCaps.restype = ctypes.c_int
+            gdi32.DeleteDC.argtypes = [wintypes.HDC]
+            gdi32.DeleteDC.restype = ctypes.c_int
             docinfo = DOCINFO()
             docinfo.cbSize = ctypes.sizeof(DOCINFO)
             docinfo.lpszDocName = doc_name
             docinfo.fwType = 0
-            if ctypes.windll.gdi32.StartDocW(hdc, ctypes.byref(docinfo)) <= 0:
+            if gdi32.StartDocW(hdc, ctypes.byref(docinfo)) <= 0:
                 raise ctypes.WinError()
-            ctypes.windll.gdi32.StartPage(hdc)
-            horzres = int(ctypes.windll.gdi32.GetDeviceCaps(hdc, 8))
-            vertres = int(ctypes.windll.gdi32.GetDeviceCaps(hdc, 10))
-            offx = int(ctypes.windll.gdi32.GetDeviceCaps(hdc, 112))
-            offy = int(ctypes.windll.gdi32.GetDeviceCaps(hdc, 113))
+            gdi32.StartPage(hdc)
+            horzres = int(gdi32.GetDeviceCaps(hdc, 8))
+            vertres = int(gdi32.GetDeviceCaps(hdc, 10))
+            offx = int(gdi32.GetDeviceCaps(hdc, 112))
+            offy = int(gdi32.GetDeviceCaps(hdc, 113))
             scale = min(horzres / sheet.width, vertres / sheet.height)
             w = int(sheet.width * scale)
             h = int(sheet.height * scale)
             x = offx + (horzres - w) // 2
             y = offy + (vertres - h) // 2
             ImageWin.Dib(sheet).draw(hdc, (x, y, x + w, y + h))
-            ctypes.windll.gdi32.EndPage(hdc)
-            ctypes.windll.gdi32.EndDoc(hdc)
+            gdi32.EndPage(hdc)
+            gdi32.EndDoc(hdc)
             messagebox.showinfo(
                 "Impressão",
-                f"Folha enviada para a impressora:\n{printer}"
+                "Folha enviada para a impressora selecionada."
             )
             return True
         except Exception as exc:
@@ -1100,6 +1151,13 @@ class App:
         finally:
             if hdc:
                 ctypes.windll.gdi32.DeleteDC(hdc)
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+            kernel32.GlobalFree.restype = ctypes.c_void_p
+            if hdev_mode:
+                kernel32.GlobalFree(hdev_mode)
+            if hdev_names:
+                kernel32.GlobalFree(hdev_names)
 
     def print_lapel_a4(self):
         built_sheet = self.build_lapel_a4_sheet()
@@ -1544,7 +1602,7 @@ class App:
             path = filedialog.asksaveasfilename(
                 title="Salvar foto redimensionada",
                 defaultextension=".jpg",
-                initialfile=f"foto_{width_cm:g}x{height_cm:g}cm",
+                initialfile=f"foto_{width_cm:g}x{height_cm:g}cm_{save_timestamp()}",
                 filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
             )
         except KeyboardInterrupt:
@@ -1655,7 +1713,7 @@ class App:
             path = filedialog.asksaveasfilename(
                 title="Salvar folha A4",
                 defaultextension=".jpg",
-                initialfile="folha_A4_9_fotos_6x9",
+                initialfile=f"folha_A4_9_fotos_6x9_{save_timestamp()}",
                 filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
             )
         except KeyboardInterrupt:
