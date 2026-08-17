@@ -13,6 +13,7 @@ import uuid
 from ctypes import wintypes
 from datetime import datetime
 from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin, ImageFont
+from buttons_tab import ButtonsTab
 
 DPI = 300
 A4_W, A4_H = 2480, 3508
@@ -114,10 +115,9 @@ class SlotCard:
         self.tk_img = None
 
         self.frame = tk.Frame(
-            parent, bg=PANEL, width=250, height=315,
+            parent, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
-        self.frame.pack_propagate(False)
 
         self.title = tk.Label(
             self.frame, text=f"Foto {index+1:02d}",
@@ -238,8 +238,10 @@ class SlotCard:
         img = self.get_image()
         if img is None:
             return
-        thumb = cover_fit(img, 180, 270, self.zoom)
-        thumb.thumbnail((115, 165), Image.Resampling.LANCZOS)
+        pw = max(50, self.preview.winfo_width() - 10)
+        ph = max(50, self.preview.winfo_height() - 10)
+        thumb = cover_fit(img, pw, ph, self.zoom)
+        thumb.thumbnail((pw, ph), Image.Resampling.LANCZOS)
         self.tk_img = ImageTk.PhotoImage(thumb)
         self.preview.configure(image=self.tk_img, text="")
         self.zoom_label.configure(text=f"{round(self.zoom * 100)}%")
@@ -254,10 +256,9 @@ class PolaroidSlotCard:
         self.tk_img = None
 
         self.frame = tk.Frame(
-            parent, bg=PANEL, width=250, height=100,
+            parent, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
-        self.frame.pack_propagate(False)
 
         top = tk.Frame(self.frame, bg=PANEL)
         top.pack(fill="x", padx=8, pady=(6, 2))
@@ -343,7 +344,9 @@ class PolaroidSlotCard:
         if img is None:
             return
         thumb = img.copy()
-        thumb.thumbnail((120, 80), Image.Resampling.LANCZOS)
+        pw = max(40, self.preview.winfo_width() - 4)
+        ph = max(40, self.preview.winfo_height() - 4)
+        thumb.thumbnail((pw, ph), Image.Resampling.LANCZOS)
         self.tk_img = ImageTk.PhotoImage(thumb)
         self.preview.configure(image=self.tk_img, text="")
         name = Path(self.path).name
@@ -359,10 +362,9 @@ class VinylSlotCard:
         self.tk_img = None
 
         self.frame = tk.Frame(
-            parent, bg=PANEL, width=250, height=100,
+            parent, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
-        self.frame.pack_propagate(False)
 
         top = tk.Frame(self.frame, bg=PANEL)
         top.pack(fill="x", padx=8, pady=(6, 2))
@@ -448,7 +450,9 @@ class VinylSlotCard:
         if img is None:
             return
         thumb = img.copy()
-        thumb.thumbnail((120, 80), Image.Resampling.LANCZOS)
+        pw = max(40, self.preview.winfo_width() - 4)
+        ph = max(40, self.preview.winfo_height() - 4)
+        thumb.thumbnail((pw, ph), Image.Resampling.LANCZOS)
         self.tk_img = ImageTk.PhotoImage(thumb)
         self.preview.configure(image=self.tk_img, text="")
         name = Path(self.path).name
@@ -507,11 +511,14 @@ class App:
         self.vinyl_img_h = tk.StringVar(value="13")
         self.vinyl_border_var = tk.BooleanVar(value=False)
         self.vinyl_count_var = tk.StringVar(value="")
-        self.vinyl_num_var = tk.IntVar(value=6)
+        self.vinyl_num_top = tk.IntVar(value=9)
+        self.vinyl_num_bottom = tk.IntVar(value=9)
         self.vinyl_total_w.trace_add("write", self.update_vinyl_sheet_count)
         self.vinyl_total_h.trace_add("write", self.update_vinyl_sheet_count)
         self.vinyl_img_w.trace_add("write", self.update_vinyl_sheet_count)
         self.vinyl_img_h.trace_add("write", self.update_vinyl_sheet_count)
+        self.vinyl_num_top.trace_add("write", self.update_vinyl_sheet_count)
+        self.vinyl_num_bottom.trace_add("write", self.update_vinyl_sheet_count)
 
         self.load_api_keys(show_errors=False)
 
@@ -522,12 +529,14 @@ class App:
         self.lapel_tab = tk.Frame(self.notebook, bg=BG)
         self.polaroid_tab = tk.Frame(self.notebook, bg=BG)
         self.vinyl_tab = tk.Frame(self.notebook, bg=BG)
+        self.buttons_tab = tk.Frame(self.notebook, bg=BG)
         self.settings_tab = tk.Frame(self.notebook, bg=BG)
         self.notebook.add(self.montage_tab, text="Montagem A4")
         self.notebook.add(self.individual_tab, text="Foto individual")
         self.notebook.add(self.lapel_tab, text="Lapela")
         self.notebook.add(self.polaroid_tab, text="Polaroid")
-        self.notebook.add(self.vinyl_tab, text="Corte Vinil Cricut Joy")
+        self.notebook.add(self.vinyl_tab, text="Vinil")
+        self.notebook.add(self.buttons_tab, text="Botões")
         self.notebook.add(self.settings_tab, text="Chaves de API")
 
         self.build_header()
@@ -537,6 +546,7 @@ class App:
         self.build_lapel_tab()
         self.build_polaroid_tab()
         self.build_vinyl_tab()
+        self.buttons_instance = ButtonsTab(self.buttons_tab, self.root)
         self.build_settings_tab()
         self.refresh_preview()
 
@@ -643,8 +653,8 @@ class App:
         tk.Label(self.sheet_panel, text="A4 vertical • escala real",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=18)
 
-        self.canvas = tk.Canvas(self.sheet_panel, bg="#E5E0D6", highlightthickness=0, width=340, height=480)
-        self.canvas.pack(padx=18, pady=(16, 8))
+        self.canvas = tk.Canvas(self.sheet_panel, bg="#E5E0D6", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True, padx=18, pady=(16, 8))
 
         export_row = tk.Frame(self.sheet_panel, bg=PANEL)
         export_row.pack(fill="x", padx=18, pady=(0, 10))
@@ -823,11 +833,10 @@ class App:
         scroll_container.bind("<Leave>", self.unbind_individual_mousewheel)
 
         controls = tk.Frame(
-            content, bg=PANEL, width=330,
+            content, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
         controls.pack(side="left", fill="y")
-        controls.pack_propagate(False)
 
         tk.Label(
             controls, text="Configurações", bg=PANEL, fg=TEXT,
@@ -927,7 +936,7 @@ class App:
         ).pack(side="left", padx=8)
         tk.Label(
             ai_panel, textvariable=self.ai_status, bg="#F7F3EB", fg=MUTED,
-            justify="left", anchor="w", font=("Segoe UI", 8), wraplength=520
+            justify="left", anchor="w", font=("Segoe UI", 8), wraplength=0
         ).pack(fill="x", padx=12, pady=(0, 10))
 
         self.individual_preview = tk.Label(
@@ -1006,11 +1015,10 @@ class App:
         scroll_container.bind("<Leave>", self.unbind_lapel_mousewheel)
 
         controls = tk.Frame(
-            content, bg=PANEL, width=330,
+            content, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
         controls.pack(side="left", fill="y")
-        controls.pack_propagate(False)
 
         tk.Label(
             controls, text="Configurações", bg=PANEL, fg=TEXT,
@@ -1038,7 +1046,7 @@ class App:
         self.lapel_count_var = tk.StringVar(value="")
         tk.Label(
             controls, textvariable=self.lapel_count_var, bg=PANEL, fg=MUTED,
-            justify="left", font=("Segoe UI", 9), wraplength=290
+            justify="left", font=("Segoe UI", 9), wraplength=0
         ).pack(anchor="w", padx=20, pady=(0, 10))
 
         rotation = tk.Frame(controls, bg=PANEL)
@@ -1088,7 +1096,7 @@ class App:
             font=("Segoe UI", 14, "bold")
         ).pack(anchor="w", padx=20, pady=(0, 4))
         self.lapel_a4_canvas = tk.Canvas(
-            preview_panel, bg="#E5E0D6", highlightthickness=0, height=210
+            preview_panel, bg="#E5E0D6", highlightthickness=0
         )
         self.lapel_a4_canvas.pack(fill="x", padx=20, pady=(0, 20))
         self.update_lapel_sheet_count()
@@ -1184,7 +1192,9 @@ class App:
             return
         image, width_cm, height_cm = built
         preview = image.copy()
-        preview.thumbnail((560, 560), Image.Resampling.LANCZOS)
+        pw = max(100, self.lapel_preview.winfo_width() - 10)
+        ph = max(100, self.lapel_preview.winfo_height() - 10)
+        preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
         self.lapel_preview_img = ImageTk.PhotoImage(preview)
         self.lapel_preview.configure(image=self.lapel_preview_img, text="")
         self.lapel_info.configure(
@@ -1560,7 +1570,7 @@ class App:
 
         tk.Label(
             controls, textvariable=self.polaroid_count_var, bg=PANEL, fg=MUTED,
-            justify="left", font=("Segoe UI", 9), wraplength=290
+            justify="left", font=("Segoe UI", 9), wraplength=0
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
         self.polaroid_grid = tk.Frame(content, bg=BG)
@@ -1593,7 +1603,7 @@ class App:
             font=("Segoe UI", 14, "bold")
         ).pack(anchor="w", padx=20, pady=(0, 4))
         self.polaroid_a4_canvas = tk.Canvas(
-            preview_panel, bg="#E5E0D6", highlightthickness=0, height=210
+            preview_panel, bg="#E5E0D6", highlightthickness=0
         )
         self.polaroid_a4_canvas.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -1733,7 +1743,9 @@ class App:
                 image = first.get_image()
                 frame = self._make_polaroid_frame(image, tw_px, th_px, iw_px, ih_px)
                 preview = frame.copy()
-                preview.thumbnail((560, 560), Image.Resampling.LANCZOS)
+                pw = max(100, self.polaroid_preview.winfo_width() - 10)
+                ph = max(100, self.polaroid_preview.winfo_height() - 10)
+                preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
                 self.polaroid_preview_img = ImageTk.PhotoImage(preview)
                 self.polaroid_preview.configure(image=self.polaroid_preview_img, text="")
                 count = sum(1 for s in self.polaroid_slots if s.path)
@@ -1952,17 +1964,20 @@ class App:
         header.pack(fill="x")
         header.pack_propagate(False)
         tk.Label(
-            header, text="Corte Vinil — Cricut Joy", bg=PANEL, fg=TEXT,
+            header, text="Vinil", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 20, "bold")
         ).pack(anchor="w", padx=24, pady=(12, 0))
         tk.Label(
             header,
-            text=f"Largura máx. {CRICUT_MAX_CM} cm • Impressão na Epson • 300 DPI",
+            text=f"Largura máx. {CRICUT_MAX_CM} cm • Cricut Joy (meia folha A4) • 300 DPI",
             bg=PANEL, fg=MUTED, font=("Segoe UI", 10)
         ).pack(anchor="w", padx=24)
 
-        scroll_container = tk.Frame(self.vinyl_tab, bg=BG)
-        scroll_container.pack(fill="both", expand=True)
+        main_body = tk.Frame(self.vinyl_tab, bg=BG)
+        main_body.pack(fill="both", expand=True)
+
+        scroll_container = tk.Frame(main_body, bg=BG)
+        scroll_container.pack(side="left", fill="both", expand=True)
 
         self.vinyl_canvas = tk.Canvas(
             scroll_container, bg=BG, highlightthickness=0
@@ -1987,11 +2002,8 @@ class App:
         scroll_container.bind("<Enter>", self.bind_vinyl_mousewheel)
         scroll_container.bind("<Leave>", self.unbind_vinyl_mousewheel)
 
-        left_col = tk.Frame(content, bg=BG)
-        left_col.pack(side="left", fill="both", expand=True)
-
         controls = tk.Frame(
-            left_col, bg=PANEL,
+            content, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
         controls.pack(fill="x")
@@ -2002,7 +2014,7 @@ class App:
         ).pack(anchor="w", padx=20, pady=(16, 10))
 
         tk.Label(
-            controls, text=f"Largura/Altura máx. do adesivo: {CRICUT_MAX_CM} cm",
+            controls, text=f"Largura máx. do adesivo: {CRICUT_MAX_CM} cm",
             bg=PANEL, fg=ACCENT, font=("Segoe UI", 9, "bold")
         ).pack(anchor="w", padx=20)
 
@@ -2032,12 +2044,6 @@ class App:
             side="left", fill="x", expand=True, padx=(5, 0)
         )
 
-        tk.Label(
-            controls, text="A imagem deve caber dentro do adesivo.\n"
-                           "Largura e altura máx. = 13,9 cm.",
-            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
-        ).pack(anchor="w", padx=20, pady=(0, 6))
-
         tk.Checkbutton(
             controls, text="Borda preta no adesivo", variable=self.vinyl_border_var,
             command=self.refresh_vinyl_preview, bg=PANEL, fg=TEXT,
@@ -2046,31 +2052,81 @@ class App:
 
         tk.Label(
             controls, textvariable=self.vinyl_count_var, bg=PANEL, fg=MUTED,
-            justify="left", font=("Segoe UI", 9), wraplength=290
+            justify="left", font=("Segoe UI", 9), wraplength=0
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
-        num_frame = tk.Frame(controls, bg=PANEL)
-        num_frame.pack(fill="x", padx=20, pady=(0, 8))
         tk.Label(
-            num_frame, text="Nº de adesivos", bg=PANEL, fg=TEXT,
+            controls, text="Adesivos na folha A4", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=20, pady=(0, 4))
+
+        top_frame = tk.Frame(controls, bg=PANEL)
+        top_frame.pack(fill="x", padx=20, pady=(0, 4))
+        tk.Label(
+            top_frame, text="Parte de cima", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10)
         ).pack(side="left")
         tk.Spinbox(
-            num_frame, from_=1, to=24, width=5,
-            textvariable=self.vinyl_num_var,
+            top_frame, from_=0, to=24, width=5,
+            textvariable=self.vinyl_num_top,
             command=self.build_vinyl_grid,
             font=("Segoe UI", 10)
         ).pack(side="left", padx=(8, 0))
 
-        self.vinyl_grid = tk.Frame(left_col, bg=BG)
+        bot_frame = tk.Frame(controls, bg=PANEL)
+        bot_frame.pack(fill="x", padx=20, pady=(0, 8))
+        tk.Label(
+            bot_frame, text="Parte de baixo", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10)
+        ).pack(side="left")
+        tk.Spinbox(
+            bot_frame, from_=0, to=24, width=5,
+            textvariable=self.vinyl_num_bottom,
+            command=self.build_vinyl_grid,
+            font=("Segoe UI", 10)
+        ).pack(side="left", padx=(8, 0))
+
+        tk.Label(
+            controls,
+            text="Linha de corte no meio da folha A4.\n"
+                 "Cricut Joy corta meia folha por vez.",
+            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
+        self.vinyl_grid = tk.Frame(content, bg=BG)
         self.vinyl_grid.pack(fill="both", expand=True, pady=(10, 0))
         self.vinyl_slots = []
         self.build_vinyl_grid()
 
-        preview_panel = tk.Frame(
-            content, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
+        preview_scroll = tk.Frame(main_body, bg=BG)
+        preview_scroll.pack(side="right", fill="y", padx=(20, 0))
+
+        preview_canvas = tk.Canvas(
+            preview_scroll, bg=PANEL, highlightthickness=0
         )
-        preview_panel.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        preview_canvas.pack(side="left", fill="both", expand=True)
+        preview_scrollbar = tk.Scrollbar(
+            preview_scroll, orient="vertical", command=preview_canvas.yview
+        )
+        preview_scrollbar.pack(side="right", fill="y")
+        preview_canvas.configure(yscrollcommand=preview_scrollbar.set)
+
+        preview_panel = tk.Frame(preview_canvas, bg=PANEL)
+        self._vinyl_preview_window = preview_canvas.create_window(
+            (0, 0), window=preview_panel, anchor="nw"
+        )
+        preview_panel.configure(padx=0, pady=0)
+        preview_panel.bind(
+            "<Configure>",
+            lambda e: preview_canvas.configure(scrollregion=preview_canvas.bbox("all"))
+        )
+        preview_canvas.bind(
+            "<Configure>",
+            lambda e: preview_canvas.itemconfigure(
+                self._vinyl_preview_window, width=e.width
+            )
+        )
+
         tk.Label(
             preview_panel, text="Prévia", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 14, "bold")
@@ -2085,15 +2141,14 @@ class App:
             preview_panel, text="Escolha uma foto para começar",
             bg="#E5E0D6", fg=MUTED, font=("Segoe UI", 11)
         )
-        self.vinyl_preview.pack(fill="both", expand=True, padx=20, pady=12)
+        self.vinyl_preview.pack(fill="x", padx=20, pady=12)
 
         tk.Label(
-            preview_panel, text="Prévia na folha A4 (linha vermelha = 13,9 cm)",
-            bg=PANEL, fg=TEXT,
+            preview_panel, text="Prévia na folha A4", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 14, "bold")
         ).pack(anchor="w", padx=20, pady=(0, 4))
         self.vinyl_a4_canvas = tk.Canvas(
-            preview_panel, bg="#E5E0D6", highlightthickness=0, height=210
+            preview_panel, bg="#E5E0D6", highlightthickness=0
         )
         self.vinyl_a4_canvas.pack(fill="x", padx=20, pady=(0, 20))
 
@@ -2103,13 +2158,20 @@ class App:
             actions, "Exportar adesivo", self.export_vinyl
         ).pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.action_button(
-            actions, "Exportar para A4 (impressão)", self.export_vinyl_a4
+            actions, "Exportar para A4", self.export_vinyl_a4
         ).pack(side="left", fill="x", expand=True, padx=(4, 0))
         actions2 = tk.Frame(preview_panel, bg=PANEL)
         actions2.pack(fill="x", padx=20, pady=(0, 16))
         self.action_button(
             actions2, "Imprimir no Windows", self.print_vinyl_a4
         ).pack(side="left", fill="x", expand=True)
+
+        preview_scroll.bind("<Enter>", lambda e: self.root.bind_all(
+            "<MouseWheel>", lambda ev: preview_canvas.yview_scroll(
+                -int(ev.delta / 120) * WHEEL_SCROLL_LINES, "units"
+            )
+        ))
+        preview_scroll.bind("<Leave>", lambda e: self.root.unbind_all("<MouseWheel>"))
 
         self.update_vinyl_sheet_count()
 
@@ -2118,14 +2180,43 @@ class App:
             slot.frame.destroy()
         self.vinyl_slots.clear()
         try:
-            n = self.vinyl_num_var.get()
+            n_top = max(0, min(24, self.vinyl_num_top.get()))
         except (tk.TclError, AttributeError):
-            n = 6
-        n = max(1, min(24, n))
-        for i in range(n):
-            card = VinylSlotCard(self.vinyl_grid, i, self.refresh_vinyl_preview)
-            card.frame.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
-            self.vinyl_slots.append(card)
+            n_top = 9
+        try:
+            n_bot = max(0, min(24, self.vinyl_num_bottom.get()))
+        except (tk.TclError, AttributeError):
+            n_bot = 9
+
+        if n_top > 0:
+            tk.Label(
+                self.vinyl_grid, text="Parte de cima", bg=BG, fg=MUTED,
+                font=("Segoe UI", 9, "bold")
+            ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
+            for i in range(n_top):
+                card = VinylSlotCard(self.vinyl_grid, i, self.refresh_vinyl_preview)
+                card.frame.grid(row=1 + i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+                self.vinyl_slots.append(card)
+
+        if n_top > 0 and n_bot > 0:
+            sep_row = 1 + ((n_top + 2) // 3)
+            tk.Frame(self.vinyl_grid, bg=ACCENT, height=2).grid(
+                row=sep_row, column=0, columnspan=3, sticky="ew", padx=4, pady=8
+            )
+            sep_label_row = sep_row + 1
+        else:
+            sep_label_row = 0 if n_top == 0 else 1 + ((n_top + 2) // 3)
+
+        if n_bot > 0:
+            tk.Label(
+                self.vinyl_grid, text="Parte de baixo", bg=BG, fg=MUTED,
+                font=("Segoe UI", 9, "bold")
+            ).grid(row=sep_label_row, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
+            for i in range(n_bot):
+                card = VinylSlotCard(self.vinyl_grid, n_top + i, self.refresh_vinyl_preview)
+                card.frame.grid(row=sep_label_row + 1 + i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+                self.vinyl_slots.append(card)
+
         for c in range(3):
             self.vinyl_grid.grid_columnconfigure(c, weight=1, uniform="vinyl")
 
@@ -2240,7 +2331,9 @@ class App:
                 image = first.get_image()
                 sticker = self._make_vinyl_sticker(image, tw_px, th_px, iw_px, ih_px)
                 preview = sticker.copy()
-                preview.thumbnail((560, 560), Image.Resampling.LANCZOS)
+                pw = max(100, self.vinyl_preview.winfo_width() - 10)
+                ph = max(100, self.vinyl_preview.winfo_height() - 10)
+                preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
                 self.vinyl_preview_img = ImageTk.PhotoImage(preview)
                 self.vinyl_preview.configure(image=self.vinyl_preview_img, text="")
                 count = sum(1 for s in self.vinyl_slots if s.path)
@@ -2283,26 +2376,60 @@ class App:
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
 
-    def get_vinyl_sheet_grid(self):
+    def get_vinyl_zone_layout(self):
         dims = self.get_vinyl_dimensions()
         if dims is None:
             return None
         _, _, _, _, tw_px, th_px, _, _ = dims
+        if tw_px > int(round(CRICUT_MAX_CM / 2.54 * DPI)):
+            return None
         margin = int(round(1.5 / 2.54 * DPI))
         gap = int(round(0.5 / 2.54 * DPI))
         usable_w = A4_W - 2 * margin
-        usable_h = A4_H - 2 * margin
-        if tw_px > usable_w or th_px > usable_h:
-            return None
+        half_h = A4_H // 2
+        zone_top = (margin, half_h - gap)
+        zone_bot = (half_h + gap, A4_H - margin)
         cols = (usable_w + gap) // (tw_px + gap)
-        rows = (usable_h + gap) // (th_px + gap)
-        if cols < 1 or rows < 1:
+        if cols < 1:
             return None
-        total_width = cols * tw_px + (cols - 1) * gap
-        total_height = rows * th_px + (rows - 1) * gap
-        start_x = margin + (usable_w - total_width) // 2
-        start_y = margin + (usable_h - total_height) // 2
-        return margin, gap, tw_px, th_px, cols, rows, start_x, start_y
+        zone_top_h = zone_top[1] - zone_top[0]
+        zone_bot_h = zone_bot[1] - zone_bot[0]
+        rows_top = max(0, (zone_top_h + gap) // (th_px + gap)) if zone_top_h > 0 else 0
+        rows_bot = max(0, (zone_bot_h + gap) // (th_px + gap)) if zone_bot_h > 0 else 0
+        cap_top = cols * rows_top
+        cap_bot = cols * rows_bot
+        try:
+            n_top = max(0, self.vinyl_num_top.get())
+        except (tk.TclError, AttributeError):
+            n_top = 0
+        try:
+            n_bot = max(0, self.vinyl_num_bottom.get())
+        except (tk.TclError, AttributeError):
+            n_bot = 0
+        n_top = min(n_top, cap_top)
+        n_bot = min(n_bot, cap_bot)
+        return {
+            "margin": margin, "gap": gap, "tw_px": tw_px, "th_px": th_px,
+            "cols": cols, "rows_top": rows_top, "rows_bot": rows_bot,
+            "zone_top": zone_top, "zone_bot": zone_bot,
+            "n_top": n_top, "n_bot": n_bot,
+            "cap_top": cap_top, "cap_bot": cap_bot,
+        }
+
+    def _get_font(self, size=36):
+        font = ImageFont.load_default()
+        for font_path in (
+            Path(__file__).parent / "arial.ttf",
+            Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/segoeui.ttf"),
+        ):
+            if font_path.exists():
+                try:
+                    font = ImageFont.truetype(str(font_path), size)
+                    break
+                except Exception:
+                    pass
+        return font
 
     def update_vinyl_sheet_count(self, *args):
         dims = self._parse_vinyl_dims_silent()
@@ -2319,76 +2446,94 @@ class App:
         if iw > tw or ih > th:
             self.vinyl_count_var.set("Imagem maior que o adesivo.")
             return
-        tw_px = int(round(tw / 2.54 * DPI))
-        th_px = int(round(th / 2.54 * DPI))
-        margin = int(round(1.5 / 2.54 * DPI))
-        gap = int(round(0.5 / 2.54 * DPI))
-        usable_w = A4_W - 2 * margin
-        usable_h = A4_H - 2 * margin
-        if tw_px > usable_w or th_px > usable_h:
-            self.vinyl_count_var.set("O adesivo é maior que a folha A4.")
+        layout = self.get_vinyl_zone_layout()
+        if layout is None:
+            self.vinyl_count_var.set("O adesivo não cabe na folha A4.")
             return
-        cols = (usable_w + gap) // (tw_px + gap)
-        rows = (usable_h + gap) // (th_px + gap)
-        total_slots = cols * rows
         photos = sum(1 for s in self.vinyl_slots if s.path) if hasattr(self, "vinyl_slots") else 0
+        n_top, n_bot = layout["n_top"], layout["n_bot"]
+        cap_top, cap_bot = layout["cap_top"], layout["cap_bot"]
         self.vinyl_count_var.set(
-            f"Na folha A4 cabem {cols} × {rows} = {total_slots} adesivo(s)."
-            + (f"  ({photos} com foto)" if photos else "")
+            f"Cima: {n_top}/{cap_top} • Baixo: {n_bot}/{cap_bot}"
+            + (f" • {photos} com foto" if photos else "")
         )
         if hasattr(self, "vinyl_a4_canvas"):
             if hasattr(self, "_vinyl_a4_job"):
                 self.root.after_cancel(self._vinyl_a4_job)
             self._vinyl_a4_job = self.root.after(400, self.refresh_vinyl_a4_preview)
 
-    def _compose_vinyl_a4(self, grid):
+    def _compose_vinyl_a4(self, layout):
         dims = self.get_vinyl_dimensions()
         _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
-        margin, gap, w, h, cols, rows, start_x, start_y = grid
+        margin = layout["margin"]
+        gap = layout["gap"]
+        cols = layout["cols"]
+        rows_top = layout["rows_top"]
+        rows_bot = layout["rows_bot"]
+        zone_top = layout["zone_top"]
+        zone_bot = layout["zone_bot"]
+        n_top = layout["n_top"]
+        n_bot = layout["n_bot"]
+        usable_w = A4_W - 2 * margin
         sheet = Image.new("RGB", (A4_W, A4_H), "white")
+        font = self._get_font(36)
+        font_sm = self._get_font(28)
+
         slots_with_photo = [s for s in self.vinyl_slots if s.path]
-        slot_idx = 0
-        for r in range(rows):
-            for c in range(cols):
-                x = start_x + c * (w + gap)
-                y = start_y + r * (h + gap)
-                if slot_idx < len(slots_with_photo):
-                    img = slots_with_photo[slot_idx].get_image()
+        all_count = n_top + n_bot
+
+        def _draw_zone(zone_y0, zone_y1, rows, zone_photos, label):
+            zone_h = zone_y1 - zone_y0
+            total_grid_w = cols * tw_px + (cols - 1) * gap
+            total_grid_h = rows * th_px + (rows - 1) * gap
+            bx = margin + (usable_w - total_grid_w) // 2
+            by = zone_y0 + (zone_h - total_grid_h) // 2
+            slot_i = 0
+            for r in range(rows):
+                for c in range(cols):
+                    if slot_i >= len(zone_photos):
+                        return
+                    x = bx + c * (tw_px + gap)
+                    y = by + r * (th_px + gap)
+                    img = zone_photos[slot_i].get_image()
                     sticker = self._make_vinyl_sticker(img, tw_px, th_px, iw_px, ih_px)
                     sheet.paste(sticker, (x, y))
-                    slot_idx += 1
-                else:
-                    empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
-                    draw = ImageDraw.Draw(empty)
-                    draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
-                    sheet.paste(empty, (x, y))
-        draw = ImageDraw.Draw(sheet)
-        cut_line_y = int(round(CRICUT_MAX_CM / 2.54 * DPI))
-        if cut_line_y < A4_H:
-            draw.line(
-                (margin, cut_line_y, A4_W - margin, cut_line_y),
-                fill=(220, 40, 40), width=4
+                    slot_i += 1
+            draw = ImageDraw.Draw(sheet)
+            draw.rectangle(
+                (margin, zone_y0, margin + usable_w, zone_y1),
+                outline=(200, 200, 200), width=2
             )
-            font = ImageFont.load_default()
-            for font_path in (
-                Path(__file__).parent / "arial.ttf",
-                Path("C:/Windows/Fonts/arial.ttf"),
-                Path("C:/Windows/Fonts/segoeui.ttf"),
-            ):
-                if font_path.exists():
-                    try:
-                        font = ImageFont.truetype(str(font_path), 36)
-                        break
-                    except Exception:
-                        pass
-            label_x = A4_W - margin - 20
-            label_y = cut_line_y + 6
             draw.text(
-                (label_x, label_y),
-                f"{CRICUT_MAX_CM} cm",
-                fill=(220, 40, 40), anchor="rt",
-                font=font
+                (margin + 8, zone_y0 + 6),
+                label, fill=(140, 140, 140), font=font_sm
             )
+
+        top_photos = slots_with_photo[:n_top]
+        bot_photos = slots_with_photo[n_top:n_top + n_bot]
+
+        if n_top > 0:
+            _draw_zone(zone_top[0], zone_top[1], rows_top, top_photos, "Parte de cima")
+        if n_bot > 0:
+            _draw_zone(zone_bot[0], zone_bot[1], rows_bot, bot_photos, "Parte de baixo")
+
+        cut_y = A4_H // 2
+        draw = ImageDraw.Draw(sheet)
+        draw.line(
+            (margin, cut_y, margin + usable_w, cut_y),
+            fill=(220, 40, 40), width=4
+        )
+        for dash_x in range(margin, margin + usable_w, 30):
+            draw.line(
+                (dash_x, cut_y - 6, dash_x + 15, cut_y - 6),
+                fill=(220, 40, 40), width=2
+            )
+        draw.text(
+            (margin + usable_w - 10, cut_y - 34),
+            "✂ CORTAR AQUI ✂",
+            fill=(220, 40, 40), anchor="rt", font=font
+        )
+
         return sheet
 
     def refresh_vinyl_a4_preview(self):
@@ -2404,16 +2549,23 @@ class App:
                 fill=MUTED, font=("Segoe UI", 9)
             )
             return
-        grid = self.get_vinyl_sheet_grid()
-        if grid is None:
+        layout = self.get_vinyl_zone_layout()
+        if layout is None:
             canvas.create_text(
                 width // 2, height // 2,
                 text="O adesivo não cabe na folha A4",
                 fill="#B00020", font=("Segoe UI", 9)
             )
             return
+        if layout["n_top"] == 0 and layout["n_bot"] == 0:
+            canvas.create_text(
+                width // 2, height // 2,
+                text="Defina adesivos na parte de cima ou de baixo",
+                fill=MUTED, font=("Segoe UI", 9)
+            )
+            return
         try:
-            sheet = self._compose_vinyl_a4(grid)
+            sheet = self._compose_vinyl_a4(layout)
         except Exception:
             return
         thumb = sheet.copy()
@@ -2426,24 +2578,30 @@ class App:
         if not has_photo:
             messagebox.showwarning("Sem adesivos", "Adicione pelo menos um adesivo.")
             return None
-        grid = self.get_vinyl_sheet_grid()
-        if grid is None:
+        layout = self.get_vinyl_zone_layout()
+        if layout is None:
             messagebox.showwarning(
                 "Adesivo muito grande",
                 "O adesivo não cabe na folha A4. Reduza as dimensões."
             )
             return None
-        sheet = self._compose_vinyl_a4(grid)
+        if layout["n_top"] == 0 and layout["n_bot"] == 0:
+            messagebox.showwarning(
+                "Sem adesivos",
+                "Defina adesivos na parte de cima ou de baixo."
+            )
+            return None
+        sheet = self._compose_vinyl_a4(layout)
         dims = self.get_vinyl_dimensions()
         tw, th = dims[0], dims[1]
-        margin, gap, w, h, cols, rows, start_x, start_y = grid
-        return sheet, cols, rows, tw, th
+        return sheet, layout, tw, th
 
     def export_vinyl_a4(self):
         built_sheet = self.build_vinyl_a4_sheet()
         if built_sheet is None:
             return
-        sheet, cols, rows, tw, th = built_sheet
+        sheet, layout, tw, th = built_sheet
+        n_top, n_bot = layout["n_top"], layout["n_bot"]
         try:
             path = filedialog.asksaveasfilename(
                 title="Salvar folha A4 de adesivos",
@@ -2464,7 +2622,7 @@ class App:
             messagebox.showinfo(
                 "Arquivo criado",
                 f"Folha A4 exportada com adesivos de {tw:g} × {th:g} cm em 300 DPI.\n"
-                f"A linha vermelha a {CRICUT_MAX_CM} cm indica a zona de corte da Cricut Joy."
+                f"Cima: {n_top} • Baixo: {n_bot} • Linha de corte no meio."
             )
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
@@ -2477,7 +2635,7 @@ class App:
         built_sheet = self.build_vinyl_a4_sheet()
         if built_sheet is None:
             return
-        sheet, cols, rows, tw, th = built_sheet
+        sheet, layout, tw, th = built_sheet
         self.print_image(sheet, f"Folha A4 - Adesivos {tw:g}x{th:g} cm")
 
     def build_settings_tab(self):
@@ -2512,7 +2670,7 @@ class App:
             card,
             text="As chaves são criptografadas pelo Windows e só podem ser "
                  "abertas pelo mesmo usuário neste computador.",
-            bg=PANEL, fg=MUTED, justify="left", wraplength=760,
+            bg=PANEL, fg=MUTED, justify="left", wraplength=0,
             font=("Segoe UI", 9)
         ).pack(anchor="w", padx=24, pady=(0, 18))
 
@@ -2888,7 +3046,9 @@ class App:
             return
         image, width_cm, height_cm = built
         preview = image.copy()
-        preview.thumbnail((760, 560), Image.Resampling.LANCZOS)
+        pw = max(100, self.individual_preview.winfo_width() - 10)
+        ph = max(100, self.individual_preview.winfo_height() - 10)
+        preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
         self.individual_preview_img = ImageTk.PhotoImage(preview)
         self.individual_preview.configure(image=self.individual_preview_img, text="")
         self.individual_info.configure(
@@ -2984,13 +3144,15 @@ class App:
             sheet = self.build_sheet()
             label = "Frente"
         preview = sheet.copy()
-        preview.thumbnail((330, 465), Image.Resampling.LANCZOS)
+        cw = max(100, self.canvas.winfo_width())
+        ch = max(100, self.canvas.winfo_height())
+        preview.thumbnail((max(1, cw - 10), max(1, ch - 10)), Image.Resampling.LANCZOS)
         self.preview_img = ImageTk.PhotoImage(preview)
 
         self.canvas.delete("all")
-        self.canvas.create_rectangle(5, 5, 335, 475, fill="#D3CEC4", outline="")
-        x = (340 - preview.width)//2
-        y = (480 - preview.height)//2
+        self.canvas.create_rectangle(5, 5, cw - 5, ch - 5, fill="#D3CEC4", outline="")
+        x = (cw - preview.width) // 2
+        y = (ch - preview.height) // 2
         self.canvas.create_image(x, y, anchor="nw", image=self.preview_img)
 
         count = sum(1 for s in self.slots if s.path)
