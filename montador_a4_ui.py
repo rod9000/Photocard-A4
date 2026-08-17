@@ -488,8 +488,14 @@ class App:
         self.lapel_preview_img = None
         self.lapel_width = tk.StringVar(value="3")
         self.lapel_height = tk.StringVar(value="3")
+        self.lapel_border_top = tk.StringVar(value="1")
+        self.lapel_border_bottom = tk.StringVar(value="1")
+        self.lapel_gap = tk.StringVar(value="0.5")
         self.lapel_width.trace_add("write", self.update_lapel_sheet_count)
         self.lapel_height.trace_add("write", self.update_lapel_sheet_count)
+        self.lapel_border_top.trace_add("write", self.update_lapel_sheet_count)
+        self.lapel_border_bottom.trace_add("write", self.update_lapel_sheet_count)
+        self.lapel_gap.trace_add("write", self.update_lapel_sheet_count)
         self.polaroid_path = None
         self.polaroid_rotation = 0
         self.polaroid_preview_img = None
@@ -655,6 +661,22 @@ class App:
 
         self.canvas = tk.Canvas(self.sheet_panel, bg="#E5E0D6", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True, padx=18, pady=(16, 8))
+
+        rotate_row = tk.Frame(self.sheet_panel, bg=PANEL)
+        rotate_row.pack(fill="x", padx=18, pady=(0, 6))
+        tk.Label(rotate_row, text="Foto:", bg=PANEL, fg=TEXT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        self.rotate_slot_var = tk.IntVar(value=1)
+        tk.Spinbox(
+            rotate_row, from_=1, to=9, width=4, textvariable=self.rotate_slot_var,
+            font=("Segoe UI", 9)
+        ).pack(side="left", padx=(4, 8))
+        self.action_button(
+            rotate_row, "Girar ↺", lambda: self.rotate_slot(-90), secondary=True
+        ).pack(side="left", padx=(0, 4))
+        self.action_button(
+            rotate_row, "Girar ↻", lambda: self.rotate_slot(90), secondary=True
+        ).pack(side="left")
 
         export_row = tk.Frame(self.sheet_panel, bg=PANEL)
         export_row.pack(fill="x", padx=18, pady=(0, 10))
@@ -1031,11 +1053,21 @@ class App:
 
         dimensions = tk.Frame(controls, bg=PANEL)
         dimensions.pack(fill="x", padx=20)
-        self._dimension_field(dimensions, "Largura (cm)", self.lapel_width).pack(
+        self._dimension_field(dimensions, "Altura (cm)", self.lapel_height).pack(
             side="left", fill="x", expand=True, padx=(0, 5)
         )
-        self._dimension_field(dimensions, "Altura (cm)", self.lapel_height).pack(
+        self._dimension_field(dimensions, "Largura (cm)", self.lapel_width).pack(
             side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        self._dimension_field(controls, "Borda superior (cm)", self.lapel_border_top).pack(
+            fill="x", padx=20, pady=(8, 0)
+        )
+        self._dimension_field(controls, "Borda inferior (cm)", self.lapel_border_bottom).pack(
+            fill="x", padx=20, pady=(8, 0)
+        )
+        self._dimension_field(controls, "Espaço entre fotos (cm)", self.lapel_gap).pack(
+            fill="x", padx=20, pady=(8, 0)
         )
 
         tk.Label(
@@ -1238,9 +1270,23 @@ class App:
             return None
         _, _, width_px, height_px = dims
         margin = int(round(1.5 / 2.54 * DPI))
-        gap = int(round(0.5 / 2.54 * DPI))
+        try:
+            gap_cm = float(self.lapel_gap.get().replace(",", "."))
+        except (ValueError, AttributeError):
+            gap_cm = 0.5
+        gap = int(round(gap_cm / 2.54 * DPI))
+        try:
+            top_border_cm = float(self.lapel_border_top.get().replace(",", "."))
+        except (ValueError, AttributeError):
+            top_border_cm = 1.0
+        try:
+            bottom_border_cm = float(self.lapel_border_bottom.get().replace(",", "."))
+        except (ValueError, AttributeError):
+            bottom_border_cm = 1.0
+        top_border = int(round(top_border_cm / 2.54 * DPI))
+        bottom_border = int(round(bottom_border_cm / 2.54 * DPI))
         usable_w = A4_W - 2 * margin
-        usable_h = A4_H - 2 * margin
+        usable_h = A4_H - 2 * margin - top_border - bottom_border
         if width_px > usable_w or height_px > usable_h:
             return None
         cols = (usable_w + gap) // (width_px + gap)
@@ -1250,7 +1296,7 @@ class App:
         total_width = cols * width_px + (cols - 1) * gap
         total_height = rows * height_px + (rows - 1) * gap
         start_x = margin + (usable_w - total_width) // 2
-        start_y = margin + (usable_h - total_height) // 2
+        start_y = margin + top_border
         return margin, gap, width_px, height_px, cols, rows, start_x, start_y
 
     def update_lapel_sheet_count(self, *args):
@@ -1266,7 +1312,11 @@ class App:
         width_px = int(round(width_cm / 2.54 * DPI))
         height_px = int(round(height_cm / 2.54 * DPI))
         margin = int(round(1.5 / 2.54 * DPI))
-        gap = int(round(0.5 / 2.54 * DPI))
+        try:
+            gap_cm = float(self.lapel_gap.get().replace(",", "."))
+        except (ValueError, AttributeError):
+            gap_cm = 0.5
+        gap = int(round(gap_cm / 2.54 * DPI))
         usable_w = A4_W - 2 * margin
         usable_h = A4_H - 2 * margin
         if width_px > usable_w or height_px > usable_h:
@@ -3115,7 +3165,24 @@ class App:
         sheet = Image.new("RGB", (A4_W, A4_H), "white")
         draw = ImageDraw.Draw(sheet)
 
-        for i, slot in enumerate(self.slots):
+        loaded = [slot for slot in self.slots if slot.path]
+        if not loaded:
+            for i in range(COLS * ROWS):
+                row, col = divmod(i, COLS)
+                x = MARGIN_X + col * (PHOTO_W + GAP_X)
+                y = MARGIN_Y + row * (PHOTO_H + GAP_Y)
+                draw.rectangle((x, y, x+PHOTO_W, y+PHOTO_H), outline=(185,185,185), width=3)
+                draw.line((x, y, x+PHOTO_W, y+PHOTO_H), fill=(220,220,220), width=2)
+                draw.line((x+PHOTO_W, y, x, y+PHOTO_H), fill=(220,220,220), width=2)
+            return sheet
+
+        total = COLS * ROWS
+        filled = []
+        while len(filled) < total:
+            filled.extend(loaded)
+        filled = filled[:total]
+
+        for i, slot in enumerate(filled):
             row, col = divmod(i, COLS)
             x = MARGIN_X + col * (PHOTO_W + GAP_X)
             y = MARGIN_Y + row * (PHOTO_H + GAP_Y)
@@ -3129,10 +3196,6 @@ class App:
                         (x, y, x + PHOTO_W - 1, y + PHOTO_H - 1),
                         outline=(0, 0, 0), width=2
                     )
-            else:
-                draw.rectangle((x, y, x+PHOTO_W, y+PHOTO_H), outline=(185,185,185), width=3)
-                draw.line((x, y, x+PHOTO_W, y+PHOTO_H), fill=(220,220,220), width=2)
-                draw.line((x+PHOTO_W, y, x, y+PHOTO_H), fill=(220,220,220), width=2)
 
         return sheet
 
@@ -3156,7 +3219,22 @@ class App:
         self.canvas.create_image(x, y, anchor="nw", image=self.preview_img)
 
         count = sum(1 for s in self.slots if s.path)
-        self.status_var.set(f"{count} de 9 fotos adicionadas • {label}")
+        total = COLS * ROWS
+        if count > 0:
+            dup = -(-total // count)
+            self.status_var.set(f"{count} foto(s) única(s) • duplicadas ×{dup} = {total} na folha • {label}")
+        else:
+            self.status_var.set(f"0 de {total} fotos adicionadas • {label}")
+
+    def rotate_slot(self, degrees):
+        try:
+            idx = self.rotate_slot_var.get() - 1
+        except (tk.TclError, AttributeError):
+            return
+        if 0 <= idx < len(self.slots) and self.slots[idx].path:
+            self.slots[idx].rotation = (self.slots[idx].rotation + degrees) % 360
+            self.slots[idx].refresh()
+            self.refresh_preview()
 
     def clear_all(self):
         for slot in self.slots:
