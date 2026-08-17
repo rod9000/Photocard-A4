@@ -12,10 +12,11 @@ import urllib.request
 import uuid
 from ctypes import wintypes
 from datetime import datetime
-from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin
+from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin, ImageFont
 
 DPI = 300
 A4_W, A4_H = 2480, 3508
+CRICUT_MAX_CM = 13.9
 PHOTO_W = int(round(60 / 25.4 * DPI))
 PHOTO_H = int(round(90 / 25.4 * DPI))
 COLS, ROWS = 3, 3
@@ -244,6 +245,216 @@ class SlotCard:
         self.zoom_label.configure(text=f"{round(self.zoom * 100)}%")
 
 
+class PolaroidSlotCard:
+    def __init__(self, parent, index, callback):
+        self.index = index
+        self.callback = callback
+        self.path = None
+        self.rotation = 0
+        self.tk_img = None
+
+        self.frame = tk.Frame(
+            parent, bg=PANEL, width=250, height=100,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        self.frame.pack_propagate(False)
+
+        top = tk.Frame(self.frame, bg=PANEL)
+        top.pack(fill="x", padx=8, pady=(6, 2))
+
+        self.title = tk.Label(
+            top, text=f"Polaroid {index+1:02d}",
+            bg=PANEL, fg=TEXT, font=("Segoe UI", 9, "bold")
+        )
+        self.title.pack(side="left")
+
+        self.file_label = tk.Label(
+            top, text="Sem foto", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8)
+        )
+        self.file_label.pack(side="right")
+
+        self.preview = tk.Label(
+            self.frame, text="Clique para adicionar",
+            bg="#ECE8DF", fg=MUTED, font=("Segoe UI", 8),
+            cursor="hand2"
+        )
+        self.preview.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        self.preview.bind("<Button-1>", lambda e: self.choose())
+
+        controls = tk.Frame(self.frame, bg=PANEL)
+        controls.pack(fill="x", padx=8, pady=(0, 6))
+
+        self._button(controls, "Adicionar", self.choose, 8).pack(side="left", padx=2)
+        self._button(controls, "↺", lambda: self.rotate(-90), 3).pack(side="left", padx=2)
+        self._button(controls, "↻", lambda: self.rotate(90), 3).pack(side="left", padx=2)
+        self._button(controls, "✕", self.clear, 3).pack(side="right", padx=2)
+
+    def _button(self, parent, text, command, width=8):
+        return tk.Button(
+            parent, text=text, command=command, width=width,
+            bg="#EFEAE0", fg=TEXT, activebackground="#E4D8C5",
+            relief="flat", font=("Segoe UI", 8), cursor="hand2"
+        )
+
+    def choose(self):
+        try:
+            path = filedialog.askopenfilename(
+                title=f"Escolher foto {self.index+1}",
+                filetypes=[("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff")]
+            )
+        except KeyboardInterrupt:
+            return
+        if path:
+            self.path = path
+            self.rotation = 0
+            self.refresh()
+            self.callback()
+
+    def rotate(self, angle):
+        if not self.path:
+            return
+        self.rotation = (self.rotation + angle) % 360
+        self.refresh()
+        self.callback()
+
+    def clear(self):
+        self.path = None
+        self.rotation = 0
+        self.tk_img = None
+        self.preview.configure(image="", text="Clique para adicionar")
+        self.file_label.configure(text="Sem foto")
+        self.callback()
+
+    def get_image(self):
+        if not self.path:
+            return None
+        try:
+            img = Image.open(self.path)
+            img = ImageOps.exif_transpose(img)
+            if self.rotation:
+                img = img.rotate(-self.rotation, expand=True)
+            return img.convert("RGB")
+        except Exception:
+            return None
+
+    def refresh(self):
+        img = self.get_image()
+        if img is None:
+            return
+        thumb = img.copy()
+        thumb.thumbnail((120, 80), Image.Resampling.LANCZOS)
+        self.tk_img = ImageTk.PhotoImage(thumb)
+        self.preview.configure(image=self.tk_img, text="")
+        name = Path(self.path).name
+        self.file_label.configure(text=name if len(name) <= 22 else name[:19] + "...")
+
+
+class VinylSlotCard:
+    def __init__(self, parent, index, callback):
+        self.index = index
+        self.callback = callback
+        self.path = None
+        self.rotation = 0
+        self.tk_img = None
+
+        self.frame = tk.Frame(
+            parent, bg=PANEL, width=250, height=100,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        self.frame.pack_propagate(False)
+
+        top = tk.Frame(self.frame, bg=PANEL)
+        top.pack(fill="x", padx=8, pady=(6, 2))
+
+        self.title = tk.Label(
+            top, text=f"Adesivo {index+1:02d}",
+            bg=PANEL, fg=TEXT, font=("Segoe UI", 9, "bold")
+        )
+        self.title.pack(side="left")
+
+        self.file_label = tk.Label(
+            top, text="Sem foto", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8)
+        )
+        self.file_label.pack(side="right")
+
+        self.preview = tk.Label(
+            self.frame, text="Clique para adicionar",
+            bg="#ECE8DF", fg=MUTED, font=("Segoe UI", 8),
+            cursor="hand2"
+        )
+        self.preview.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        self.preview.bind("<Button-1>", lambda e: self.choose())
+
+        controls = tk.Frame(self.frame, bg=PANEL)
+        controls.pack(fill="x", padx=8, pady=(0, 6))
+
+        self._button(controls, "Adicionar", self.choose, 8).pack(side="left", padx=2)
+        self._button(controls, "↺", lambda: self.rotate(-90), 3).pack(side="left", padx=2)
+        self._button(controls, "↻", lambda: self.rotate(90), 3).pack(side="left", padx=2)
+        self._button(controls, "✕", self.clear, 3).pack(side="right", padx=2)
+
+    def _button(self, parent, text, command, width=8):
+        return tk.Button(
+            parent, text=text, command=command, width=width,
+            bg="#EFEAE0", fg=TEXT, activebackground="#E4D8C5",
+            relief="flat", font=("Segoe UI", 8), cursor="hand2"
+        )
+
+    def choose(self):
+        try:
+            path = filedialog.askopenfilename(
+                title=f"Escolher adesivo {self.index+1}",
+                filetypes=[("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff")]
+            )
+        except KeyboardInterrupt:
+            return
+        if path:
+            self.path = path
+            self.rotation = 0
+            self.refresh()
+            self.callback()
+
+    def rotate(self, angle):
+        if not self.path:
+            return
+        self.rotation = (self.rotation + angle) % 360
+        self.refresh()
+        self.callback()
+
+    def clear(self):
+        self.path = None
+        self.rotation = 0
+        self.tk_img = None
+        self.preview.configure(image="", text="Clique para adicionar")
+        self.file_label.configure(text="Sem foto")
+        self.callback()
+
+    def get_image(self):
+        if not self.path:
+            return None
+        try:
+            img = Image.open(self.path)
+            img = ImageOps.exif_transpose(img)
+            if self.rotation:
+                img = img.rotate(-self.rotation, expand=True)
+            return img.convert("RGB")
+        except Exception:
+            return None
+
+    def refresh(self):
+        img = self.get_image()
+        if img is None:
+            return
+        thumb = img.copy()
+        thumb.thumbnail((120, 80), Image.Resampling.LANCZOS)
+        self.tk_img = ImageTk.PhotoImage(thumb)
+        self.preview.configure(image=self.tk_img, text="")
+        name = Path(self.path).name
+        self.file_label.configure(text=name if len(name) <= 22 else name[:19] + "...")
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -254,6 +465,8 @@ class App:
 
         self.status_var = tk.StringVar(value="Nenhuma foto adicionada")
         self.border_var = tk.BooleanVar(value=False)
+        self.verso_var = tk.BooleanVar(value=False)
+        self.verso_offset_y = tk.StringVar(value="0")
         self.preview_img = None
         self.individual_path = None
         self.individual_rotation = 0
@@ -273,6 +486,33 @@ class App:
         self.lapel_height = tk.StringVar(value="3")
         self.lapel_width.trace_add("write", self.update_lapel_sheet_count)
         self.lapel_height.trace_add("write", self.update_lapel_sheet_count)
+        self.polaroid_path = None
+        self.polaroid_rotation = 0
+        self.polaroid_preview_img = None
+        self.polaroid_total_w = tk.StringVar(value="10.8")
+        self.polaroid_total_h = tk.StringVar(value="8.6")
+        self.polaroid_img_w = tk.StringVar(value="7.9")
+        self.polaroid_img_h = tk.StringVar(value="7.9")
+        self.polaroid_border_var = tk.BooleanVar(value=False)
+        self.polaroid_count_var = tk.StringVar(value="")
+        self.polaroid_num_var = tk.IntVar(value=4)
+        self.polaroid_total_w.trace_add("write", self.update_polaroid_sheet_count)
+        self.polaroid_total_h.trace_add("write", self.update_polaroid_sheet_count)
+        self.polaroid_img_w.trace_add("write", self.update_polaroid_sheet_count)
+        self.polaroid_img_h.trace_add("write", self.update_polaroid_sheet_count)
+
+        self.vinyl_total_w = tk.StringVar(value="13.9")
+        self.vinyl_total_h = tk.StringVar(value="13.9")
+        self.vinyl_img_w = tk.StringVar(value="13")
+        self.vinyl_img_h = tk.StringVar(value="13")
+        self.vinyl_border_var = tk.BooleanVar(value=False)
+        self.vinyl_count_var = tk.StringVar(value="")
+        self.vinyl_num_var = tk.IntVar(value=6)
+        self.vinyl_total_w.trace_add("write", self.update_vinyl_sheet_count)
+        self.vinyl_total_h.trace_add("write", self.update_vinyl_sheet_count)
+        self.vinyl_img_w.trace_add("write", self.update_vinyl_sheet_count)
+        self.vinyl_img_h.trace_add("write", self.update_vinyl_sheet_count)
+
         self.load_api_keys(show_errors=False)
 
         self.notebook = ttk.Notebook(self.root)
@@ -280,10 +520,14 @@ class App:
         self.montage_tab = tk.Frame(self.notebook, bg=BG)
         self.individual_tab = tk.Frame(self.notebook, bg=BG)
         self.lapel_tab = tk.Frame(self.notebook, bg=BG)
+        self.polaroid_tab = tk.Frame(self.notebook, bg=BG)
+        self.vinyl_tab = tk.Frame(self.notebook, bg=BG)
         self.settings_tab = tk.Frame(self.notebook, bg=BG)
         self.notebook.add(self.montage_tab, text="Montagem A4")
         self.notebook.add(self.individual_tab, text="Foto individual")
         self.notebook.add(self.lapel_tab, text="Lapela")
+        self.notebook.add(self.polaroid_tab, text="Polaroid")
+        self.notebook.add(self.vinyl_tab, text="Corte Vinil Cricut Joy")
         self.notebook.add(self.settings_tab, text="Chaves de API")
 
         self.build_header()
@@ -291,6 +535,8 @@ class App:
         self.build_footer()
         self.build_individual_tab()
         self.build_lapel_tab()
+        self.build_polaroid_tab()
+        self.build_vinyl_tab()
         self.build_settings_tab()
         self.refresh_preview()
 
@@ -313,10 +559,9 @@ class App:
         self.header_actions = tk.Frame(self.montage_header, bg=PANEL)
         self.header_actions.pack(side="right", padx=24)
 
+        self.action_button(self.header_actions, "Imprimir", self.print_montage).pack(side="left", padx=5)
         self.action_button(self.header_actions, "Adicionar 9 fotos", self.select_multiple, secondary=True).pack(side="left", padx=5)
         self.action_button(self.header_actions, "Limpar tudo", self.clear_all, secondary=True).pack(side="left", padx=5)
-        self.action_button(self.header_actions, "Exportar A4", self.export_sheet).pack(side="left", padx=5)
-        self.action_button(self.header_actions, "Imprimir", self.print_montage).pack(side="left", padx=5)
         self.montage_header.bind(
             "<Configure>",
             lambda event: self.root.after_idle(
@@ -369,9 +614,6 @@ class App:
 
         tk.Label(grid_header, text="Fotos", bg=BG, fg=TEXT,
                  font=("Segoe UI", 14, "bold")).pack(side="left")
-        tk.Button(grid_header, text="Limpar tudo", command=self.clear_all,
-                  bg=BG, fg=ACCENT, relief="flat", font=("Segoe UI", 9, "bold"),
-                  cursor="hand2").pack(side="right")
         tk.Checkbutton(
             grid_header, text="Borda preta nas fotos", variable=self.border_var,
             command=self.refresh_preview, bg=BG, fg=TEXT, activebackground=BG,
@@ -402,7 +644,16 @@ class App:
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=18)
 
         self.canvas = tk.Canvas(self.sheet_panel, bg="#E5E0D6", highlightthickness=0, width=340, height=480)
-        self.canvas.pack(padx=18, pady=16)
+        self.canvas.pack(padx=18, pady=(16, 8))
+
+        export_row = tk.Frame(self.sheet_panel, bg=PANEL)
+        export_row.pack(fill="x", padx=18, pady=(0, 10))
+        self.action_button(
+            export_row, "Exportar A4", self.export_sheet
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            export_row, "Exportar verso", self.export_verso
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
 
         info = tk.Frame(self.sheet_panel, bg="#F7F3EB")
         info.pack(fill="x", padx=18, pady=(0, 12))
@@ -421,9 +672,45 @@ class App:
             tk.Label(line, text=value, bg="#F7F3EB", fg=TEXT,
                      font=("Segoe UI", 9, "bold")).pack(side="right")
 
+        verso_frame = tk.Frame(self.sheet_panel, bg=PANEL)
+        verso_frame.pack(fill="x", padx=18, pady=(0, 8))
+
+        tk.Label(
+            verso_frame, text="Verso", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 12, "bold")
+        ).pack(anchor="w")
+        tk.Checkbutton(
+            verso_frame, text="Página de verso (espelhar vertical)",
+            variable=self.verso_var, command=self.refresh_preview,
+            bg=PANEL, fg=TEXT, activebackground=PANEL,
+            font=("Segoe UI", 9)
+        ).pack(anchor="w")
+
+        verso_offset_frame = tk.Frame(verso_frame, bg=PANEL)
+        verso_offset_frame.pack(fill="x", pady=(4, 0))
+        tk.Label(
+            verso_offset_frame, text="Deslocamento Y (mm):",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 9)
+        ).pack(side="left")
+        tk.Entry(
+            verso_offset_frame, textvariable=self.verso_offset_y, width=6,
+            bg="#F7F3EB", fg=TEXT, relief="solid", bd=1,
+            font=("Segoe UI", 9)
+        ).pack(side="left", padx=(4, 0), ipady=2)
+        tk.Label(
+            verso_offset_frame, text="±3 mm",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 8)
+        ).pack(side="left", padx=(4, 0))
+
+        verso_actions = tk.Frame(verso_frame, bg=PANEL)
+        verso_actions.pack(fill="x", pady=(8, 0))
+        self.action_button(
+            verso_actions, "Imprimir verso", self.print_verso, secondary=True
+        ).pack(side="left")
+
         tk.Label(
             self.sheet_panel,
-            text="Para manter o tamanho correto na impressão,\nuse escala 100% e desative “Ajustar à página”.",
+            text="Para manter o tamanho correto na impressão,\nuse escala 100% e desative 'Ajustar à página'.",
             bg=PANEL, fg=MUTED, justify="center", font=("Segoe UI", 9)
         ).pack(pady=(4, 10))
 
@@ -1177,6 +1464,1022 @@ class App:
             return
         self.print_image(self.build_sheet(), "Folha A4 - 9 Fotos 6x9 cm")
 
+    def build_polaroid_tab(self):
+        header = tk.Frame(
+            self.polaroid_tab, bg=PANEL, height=76,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Label(
+            header, text="Criar Polaroid", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", padx=24, pady=(12, 0))
+        tk.Label(
+            header, text="Foto emoldurada em estilo Polaroid • 300 DPI",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 10)
+        ).pack(anchor="w", padx=24)
+
+        scroll_container = tk.Frame(self.polaroid_tab, bg=BG)
+        scroll_container.pack(fill="both", expand=True)
+
+        self.polaroid_canvas = tk.Canvas(
+            scroll_container, bg=BG, highlightthickness=0
+        )
+        self.polaroid_canvas.pack(side="left", fill="both", expand=True)
+        polaroid_scrollbar = tk.Scrollbar(
+            scroll_container, orient="vertical",
+            command=self.polaroid_canvas.yview
+        )
+        polaroid_scrollbar.pack(side="right", fill="y")
+        self.polaroid_canvas.configure(yscrollcommand=polaroid_scrollbar.set)
+
+        content = tk.Frame(self.polaroid_canvas, bg=BG)
+        self.polaroid_content = content
+        self.polaroid_min_content_height = 640
+        self.polaroid_window = self.polaroid_canvas.create_window(
+            (0, 0), window=content, anchor="nw"
+        )
+        content.configure(padx=24, pady=24)
+        content.bind("<Configure>", self.update_polaroid_scrollregion)
+        self.polaroid_canvas.bind("<Configure>", self.resize_polaroid_content)
+        scroll_container.bind("<Enter>", self.bind_polaroid_mousewheel)
+        scroll_container.bind("<Leave>", self.unbind_polaroid_mousewheel)
+
+        left_col = tk.Frame(content, bg=BG)
+        left_col.pack(side="left", fill="both", expand=True)
+
+        controls = tk.Frame(
+            left_col, bg=PANEL,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        controls.pack(fill="x")
+
+        tk.Label(
+            controls, text="Configurações", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(16, 10))
+
+        tk.Label(
+            controls, text="Dimensões do frame (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=20)
+        total_dims = tk.Frame(controls, bg=PANEL)
+        total_dims.pack(fill="x", padx=20, pady=(4, 8))
+        self._dimension_field(total_dims, "Largura total", self.polaroid_total_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(total_dims, "Altura total", self.polaroid_total_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            controls, text="Dimensões da imagem (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=20)
+        img_dims = tk.Frame(controls, bg=PANEL)
+        img_dims.pack(fill="x", padx=20, pady=(4, 8))
+        self._dimension_field(img_dims, "Largura imagem", self.polaroid_img_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(img_dims, "Altura imagem", self.polaroid_img_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            controls, text="A imagem deve ser menor ou igual ao frame.\n"
+                           "A borda branca = (frame − imagem) / 2.",
+            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
+        tk.Checkbutton(
+            controls, text="Borda preta na polaroid", variable=self.polaroid_border_var,
+            command=self.refresh_polaroid_preview, bg=PANEL, fg=TEXT,
+            activebackground=PANEL, font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
+        tk.Label(
+            controls, textvariable=self.polaroid_count_var, bg=PANEL, fg=MUTED,
+            justify="left", font=("Segoe UI", 9), wraplength=290
+        ).pack(anchor="w", padx=20, pady=(0, 8))
+
+        self.polaroid_grid = tk.Frame(left_col, bg=BG)
+        self.polaroid_grid.pack(fill="both", expand=True, pady=(10, 0))
+        self.polaroid_slots = []
+        self.build_polaroid_grid()
+
+        preview_panel = tk.Frame(
+            content, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
+        )
+        preview_panel.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        tk.Label(
+            preview_panel, text="Prévia", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(20, 4))
+        self.polaroid_info = tk.Label(
+            preview_panel, text="Nenhuma foto selecionada",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 9)
+        )
+        self.polaroid_info.pack(anchor="w", padx=20)
+
+        self.polaroid_preview = tk.Label(
+            preview_panel, text="Escolha uma foto para começar",
+            bg="#E5E0D6", fg=MUTED, font=("Segoe UI", 11)
+        )
+        self.polaroid_preview.pack(fill="both", expand=True, padx=20, pady=12)
+
+        tk.Label(
+            preview_panel, text="Prévia na folha A4", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(0, 4))
+        self.polaroid_a4_canvas = tk.Canvas(
+            preview_panel, bg="#E5E0D6", highlightthickness=0, height=210
+        )
+        self.polaroid_a4_canvas.pack(fill="x", padx=20, pady=(0, 20))
+
+        actions = tk.Frame(preview_panel, bg=PANEL)
+        actions.pack(fill="x", padx=20, pady=(0, 16))
+        self.action_button(
+            actions, "Exportar polaroid", self.export_polaroid
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            actions, "Exportar para A4", self.export_polaroid_a4
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
+        actions2 = tk.Frame(preview_panel, bg=PANEL)
+        actions2.pack(fill="x", padx=20, pady=(0, 16))
+        self.action_button(
+            actions2, "Imprimir no Windows", self.print_polaroid_a4
+        ).pack(side="left", fill="x", expand=True)
+
+        self.update_polaroid_sheet_count()
+
+    def build_polaroid_grid(self, *args):
+        for slot in self.polaroid_slots:
+            slot.frame.destroy()
+        self.polaroid_slots.clear()
+        try:
+            n = self.polaroid_num_var.get()
+        except (tk.TclError, AttributeError):
+            n = 4
+        n = max(1, min(24, n))
+        for i in range(n):
+            card = PolaroidSlotCard(self.polaroid_grid, i, self.refresh_polaroid_preview)
+            card.frame.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+            self.polaroid_slots.append(card)
+        for c in range(3):
+            self.polaroid_grid.grid_columnconfigure(c, weight=1, uniform="polaroid")
+
+    def update_polaroid_scrollregion(self, event=None):
+        self.polaroid_canvas.configure(scrollregion=self.polaroid_canvas.bbox("all"))
+
+    def resize_polaroid_content(self, event):
+        self.polaroid_canvas.itemconfigure(
+            self.polaroid_window,
+            width=event.width,
+            height=max(
+                event.height,
+                self.polaroid_min_content_height,
+                self.polaroid_content.winfo_reqheight()
+            )
+        )
+
+    def bind_polaroid_mousewheel(self, event=None):
+        self.root.bind_all("<MouseWheel>", self.scroll_polaroid_with_mouse)
+
+    def unbind_polaroid_mousewheel(self, event=None):
+        self.root.unbind_all("<MouseWheel>")
+
+    def scroll_polaroid_with_mouse(self, event):
+        if event.delta:
+            self.polaroid_canvas.yview_scroll(
+                -int(event.delta / 120) * WHEEL_SCROLL_LINES, "units"
+            )
+
+    def _parse_polaroid_dims_silent(self):
+        try:
+            tw = float(self.polaroid_total_w.get().replace(",", "."))
+            th = float(self.polaroid_total_h.get().replace(",", "."))
+            iw = float(self.polaroid_img_w.get().replace(",", "."))
+            ih = float(self.polaroid_img_h.get().replace(",", "."))
+            return tw, th, iw, ih
+        except ValueError:
+            return None
+
+    def get_polaroid_dimensions(self):
+        try:
+            tw = float(self.polaroid_total_w.get().replace(",", "."))
+            th = float(self.polaroid_total_h.get().replace(",", "."))
+            iw = float(self.polaroid_img_w.get().replace(",", "."))
+            ih = float(self.polaroid_img_h.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Tamanho inválido", "Informe todas as dimensões usando números.")
+            return None
+        if not (0.5 <= tw <= 100 and 0.5 <= th <= 100 and 0.5 <= iw <= 100 and 0.5 <= ih <= 100):
+            messagebox.showerror("Tamanho inválido", "As dimensões devem estar entre 0,5 e 100 cm.")
+            return None
+        if iw > tw or ih > th:
+            messagebox.showerror(
+                "Dimensão inválida",
+                "A imagem deve ser menor ou igual ao frame nos dois eixos."
+            )
+            return None
+        tw_px = int(round(tw / 2.54 * DPI))
+        th_px = int(round(th / 2.54 * DPI))
+        iw_px = int(round(iw / 2.54 * DPI))
+        ih_px = int(round(ih / 2.54 * DPI))
+        return tw, th, iw, ih, tw_px, th_px, iw_px, ih_px
+
+    def _make_polaroid_frame(self, image, tw_px, th_px, iw_px, ih_px):
+        photo = cover_fit(image, iw_px, ih_px)
+        frame = Image.new("RGB", (tw_px, th_px), "white")
+        x = (tw_px - iw_px) // 2
+        y = (th_px - ih_px) // 2
+        frame.paste(photo, (x, y))
+        if self.polaroid_border_var.get():
+            draw = ImageDraw.Draw(frame)
+            draw.rectangle(
+                (0, 0, tw_px - 1, th_px - 1),
+                outline=(0, 0, 0), width=2
+            )
+        return frame
+
+    def build_polaroid_image(self):
+        if not self.polaroid_slots:
+            return None
+        first_with_photo = next((s for s in self.polaroid_slots if s.path), None)
+        if not first_with_photo:
+            messagebox.showwarning("Sem fotos", "Adicione pelo menos uma foto.")
+            return None
+        dims = self.get_polaroid_dimensions()
+        if dims is None:
+            return None
+        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        try:
+            image = first_with_photo.get_image()
+            frame = self._make_polaroid_frame(image, tw_px, th_px, iw_px, ih_px)
+            return frame, tw, th, iw, ih
+        except Exception as exc:
+            messagebox.showerror("Erro", f"Não foi possível processar a imagem.\n\n{exc}")
+            return None
+
+    def refresh_polaroid_preview(self):
+        dims = self.get_polaroid_dimensions()
+        if dims is None:
+            return
+        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        first = next((s for s in self.polaroid_slots if s.path), None)
+        if first:
+            try:
+                image = first.get_image()
+                frame = self._make_polaroid_frame(image, tw_px, th_px, iw_px, ih_px)
+                preview = frame.copy()
+                preview.thumbnail((560, 560), Image.Resampling.LANCZOS)
+                self.polaroid_preview_img = ImageTk.PhotoImage(preview)
+                self.polaroid_preview.configure(image=self.polaroid_preview_img, text="")
+                count = sum(1 for s in self.polaroid_slots if s.path)
+                self.polaroid_info.configure(
+                    text=f"{count} polaroid(es) • {tw:g} × {th:g} cm • imagem {iw:g} × {ih:g} cm"
+                )
+            except Exception:
+                pass
+        else:
+            self.polaroid_preview.configure(image="", text="Escolha uma foto para começar")
+            self.polaroid_info.configure(text="Nenhuma foto selecionada")
+        self.refresh_polaroid_a4_preview()
+
+    def export_polaroid(self):
+        built = self.build_polaroid_image()
+        if built is None:
+            return
+        image, tw, th, iw, ih = built
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar Polaroid",
+                defaultextension=".jpg",
+                initialfile=f"polaroid_{tw:g}x{th:g}cm_{save_timestamp()}",
+                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            ext = Path(path).suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                image.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
+            else:
+                image.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Arquivo criado",
+                f"Polaroid exportada com {tw:g} × {th:g} cm em 300 DPI."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def get_polaroid_sheet_grid(self):
+        dims = self.get_polaroid_dimensions()
+        if dims is None:
+            return None
+        _, _, _, _, tw_px, th_px, _, _ = dims
+        margin = int(round(1.5 / 2.54 * DPI))
+        gap = int(round(0.5 / 2.54 * DPI))
+        usable_w = A4_W - 2 * margin
+        usable_h = A4_H - 2 * margin
+        if tw_px > usable_w or th_px > usable_h:
+            return None
+        cols = (usable_w + gap) // (tw_px + gap)
+        rows = (usable_h + gap) // (th_px + gap)
+        if cols < 1 or rows < 1:
+            return None
+        total_width = cols * tw_px + (cols - 1) * gap
+        total_height = rows * th_px + (rows - 1) * gap
+        start_x = margin + (usable_w - total_width) // 2
+        start_y = margin + (usable_h - total_height) // 2
+        return margin, gap, tw_px, th_px, cols, rows, start_x, start_y
+
+    def update_polaroid_sheet_count(self, *args):
+        dims = self._parse_polaroid_dims_silent()
+        if dims is None:
+            self.polaroid_count_var.set("")
+            return
+        tw, th, iw, ih = dims
+        if not (0.5 <= tw <= 100 and 0.5 <= th <= 100 and 0.5 <= iw <= 100 and 0.5 <= ih <= 100):
+            self.polaroid_count_var.set("")
+            return
+        if iw > tw or ih > th:
+            self.polaroid_count_var.set("Imagem maior que o frame.")
+            return
+        tw_px = int(round(tw / 2.54 * DPI))
+        th_px = int(round(th / 2.54 * DPI))
+        margin = int(round(1.5 / 2.54 * DPI))
+        gap = int(round(0.5 / 2.54 * DPI))
+        usable_w = A4_W - 2 * margin
+        usable_h = A4_H - 2 * margin
+        if tw_px > usable_w or th_px > usable_h:
+            self.polaroid_count_var.set("O frame é maior que a folha A4.")
+            return
+        cols = (usable_w + gap) // (tw_px + gap)
+        rows = (usable_h + gap) // (th_px + gap)
+        total_slots = cols * rows
+        photos = sum(1 for s in self.polaroid_slots if s.path) if hasattr(self, "polaroid_slots") else 0
+        self.polaroid_count_var.set(
+            f"Na folha A4 cabem {cols} × {rows} = {total_slots} polaroides."
+            + (f"  ({photos} com foto)" if photos else "")
+        )
+        if hasattr(self, "polaroid_a4_canvas"):
+            if hasattr(self, "_polaroid_a4_job"):
+                self.root.after_cancel(self._polaroid_a4_job)
+            self._polaroid_a4_job = self.root.after(
+                400, self.refresh_polaroid_a4_preview
+            )
+
+    def _compose_polaroid_a4(self, grid):
+        dims = self.get_polaroid_dimensions()
+        _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
+        margin, gap, w, h, cols, rows, start_x, start_y = grid
+        sheet = Image.new("RGB", (A4_W, A4_H), "white")
+        slots_with_photo = [s for s in self.polaroid_slots if s.path]
+        slot_idx = 0
+        for r in range(rows):
+            for c in range(cols):
+                x = start_x + c * (w + gap)
+                y = start_y + r * (h + gap)
+                if slot_idx < len(slots_with_photo):
+                    img = slots_with_photo[slot_idx].get_image()
+                    frame = self._make_polaroid_frame(img, tw_px, th_px, iw_px, ih_px)
+                    sheet.paste(frame, (x, y))
+                    slot_idx += 1
+                else:
+                    empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
+                    draw = ImageDraw.Draw(empty)
+                    draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
+                    sheet.paste(empty, (x, y))
+        return sheet
+
+    def refresh_polaroid_a4_preview(self):
+        canvas = self.polaroid_a4_canvas
+        canvas.delete("all")
+        width = max(100, canvas.winfo_width())
+        height = max(100, canvas.winfo_height())
+        has_photo = any(s.path for s in self.polaroid_slots)
+        if not has_photo:
+            canvas.create_text(
+                width // 2, height // 2,
+                text="Escolha uma foto para ver a folha A4",
+                fill=MUTED, font=("Segoe UI", 9)
+            )
+            return
+        grid = self.get_polaroid_sheet_grid()
+        if grid is None:
+            canvas.create_text(
+                width // 2, height // 2,
+                text="O frame não cabe na folha A4",
+                fill="#B00020", font=("Segoe UI", 9)
+            )
+            return
+        try:
+            sheet = self._compose_polaroid_a4(grid)
+        except Exception:
+            return
+        thumb = sheet.copy()
+        thumb.thumbnail((width - 16, height - 16), Image.Resampling.LANCZOS)
+        self.polaroid_a4_tk = ImageTk.PhotoImage(thumb)
+        canvas.create_image(width // 2, height // 2, image=self.polaroid_a4_tk)
+
+    def build_polaroid_a4_sheet(self):
+        has_photo = any(s.path for s in self.polaroid_slots)
+        if not has_photo:
+            messagebox.showwarning("Sem fotos", "Adicione pelo menos uma foto.")
+            return None
+        grid = self.get_polaroid_sheet_grid()
+        if grid is None:
+            messagebox.showwarning(
+                "Frame muito grande",
+                "O frame não cabe na folha A4. Reduza as dimensões."
+            )
+            return None
+        sheet = self._compose_polaroid_a4(grid)
+        dims = self.get_polaroid_dimensions()
+        tw, th = dims[0], dims[1]
+        margin, gap, w, h, cols, rows, start_x, start_y = grid
+        return sheet, cols, rows, tw, th
+
+    def export_polaroid_a4(self):
+        built_sheet = self.build_polaroid_a4_sheet()
+        if built_sheet is None:
+            return
+        sheet, cols, rows, tw, th = built_sheet
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar folha A4 de Polaroides",
+                defaultextension=".jpg",
+                initialfile=f"folha_A4_polaroides_{tw:g}x{th:g}_{save_timestamp()}",
+                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            ext = Path(path).suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                sheet.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
+            else:
+                sheet.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Arquivo criado",
+                f"Folha A4 exportada com polaroides de {tw:g} × {th:g} cm em 300 DPI."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def print_polaroid_a4(self):
+        has_photo = any(s.path for s in self.polaroid_slots)
+        if not has_photo:
+            messagebox.showwarning("Sem fotos", "Adicione pelo menos uma foto antes de imprimir.")
+            return
+        built_sheet = self.build_polaroid_a4_sheet()
+        if built_sheet is None:
+            return
+        sheet, cols, rows, tw, th = built_sheet
+        self.print_image(sheet, f"Folha A4 - Polaroides {tw:g}x{th:g} cm")
+
+    def build_vinyl_tab(self):
+        header = tk.Frame(
+            self.vinyl_tab, bg=PANEL, height=76,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Label(
+            header, text="Corte Vinil — Cricut Joy", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", padx=24, pady=(12, 0))
+        tk.Label(
+            header,
+            text=f"Largura máx. {CRICUT_MAX_CM} cm • Impressão na Epson • 300 DPI",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 10)
+        ).pack(anchor="w", padx=24)
+
+        scroll_container = tk.Frame(self.vinyl_tab, bg=BG)
+        scroll_container.pack(fill="both", expand=True)
+
+        self.vinyl_canvas = tk.Canvas(
+            scroll_container, bg=BG, highlightthickness=0
+        )
+        self.vinyl_canvas.pack(side="left", fill="both", expand=True)
+        vinyl_scrollbar = tk.Scrollbar(
+            scroll_container, orient="vertical",
+            command=self.vinyl_canvas.yview
+        )
+        vinyl_scrollbar.pack(side="right", fill="y")
+        self.vinyl_canvas.configure(yscrollcommand=vinyl_scrollbar.set)
+
+        content = tk.Frame(self.vinyl_canvas, bg=BG)
+        self.vinyl_content = content
+        self.vinyl_min_content_height = 640
+        self.vinyl_window = self.vinyl_canvas.create_window(
+            (0, 0), window=content, anchor="nw"
+        )
+        content.configure(padx=24, pady=24)
+        content.bind("<Configure>", self.update_vinyl_scrollregion)
+        self.vinyl_canvas.bind("<Configure>", self.resize_vinyl_content)
+        scroll_container.bind("<Enter>", self.bind_vinyl_mousewheel)
+        scroll_container.bind("<Leave>", self.unbind_vinyl_mousewheel)
+
+        left_col = tk.Frame(content, bg=BG)
+        left_col.pack(side="left", fill="both", expand=True)
+
+        controls = tk.Frame(
+            left_col, bg=PANEL,
+            highlightbackground=BORDER, highlightthickness=1
+        )
+        controls.pack(fill="x")
+
+        tk.Label(
+            controls, text="Configurações", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(16, 10))
+
+        tk.Label(
+            controls, text=f"Largura/Altura máx. do adesivo: {CRICUT_MAX_CM} cm",
+            bg=PANEL, fg=ACCENT, font=("Segoe UI", 9, "bold")
+        ).pack(anchor="w", padx=20)
+
+        tk.Label(
+            controls, text="Dimensões do adesivo (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=20, pady=(8, 0))
+        ad_dims = tk.Frame(controls, bg=PANEL)
+        ad_dims.pack(fill="x", padx=20, pady=(4, 8))
+        self._dimension_field(ad_dims, "Largura", self.vinyl_total_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(ad_dims, "Altura", self.vinyl_total_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            controls, text="Dimensões da imagem (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=20)
+        img_dims = tk.Frame(controls, bg=PANEL)
+        img_dims.pack(fill="x", padx=20, pady=(4, 8))
+        self._dimension_field(img_dims, "Largura imagem", self.vinyl_img_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(img_dims, "Altura imagem", self.vinyl_img_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            controls, text="A imagem deve caber dentro do adesivo.\n"
+                           "Largura e altura máx. = 13,9 cm.",
+            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
+        tk.Checkbutton(
+            controls, text="Borda preta no adesivo", variable=self.vinyl_border_var,
+            command=self.refresh_vinyl_preview, bg=PANEL, fg=TEXT,
+            activebackground=PANEL, font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
+        tk.Label(
+            controls, textvariable=self.vinyl_count_var, bg=PANEL, fg=MUTED,
+            justify="left", font=("Segoe UI", 9), wraplength=290
+        ).pack(anchor="w", padx=20, pady=(0, 8))
+
+        num_frame = tk.Frame(controls, bg=PANEL)
+        num_frame.pack(fill="x", padx=20, pady=(0, 8))
+        tk.Label(
+            num_frame, text="Nº de adesivos", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(side="left")
+        tk.Spinbox(
+            num_frame, from_=1, to=24, width=5,
+            textvariable=self.vinyl_num_var,
+            command=self.build_vinyl_grid,
+            font=("Segoe UI", 10)
+        ).pack(side="left", padx=(8, 0))
+
+        self.vinyl_grid = tk.Frame(left_col, bg=BG)
+        self.vinyl_grid.pack(fill="both", expand=True, pady=(10, 0))
+        self.vinyl_slots = []
+        self.build_vinyl_grid()
+
+        preview_panel = tk.Frame(
+            content, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
+        )
+        preview_panel.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        tk.Label(
+            preview_panel, text="Prévia", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(20, 4))
+        self.vinyl_info = tk.Label(
+            preview_panel, text="Nenhum adesivo adicionado",
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 9)
+        )
+        self.vinyl_info.pack(anchor="w", padx=20)
+
+        self.vinyl_preview = tk.Label(
+            preview_panel, text="Escolha uma foto para começar",
+            bg="#E5E0D6", fg=MUTED, font=("Segoe UI", 11)
+        )
+        self.vinyl_preview.pack(fill="both", expand=True, padx=20, pady=12)
+
+        tk.Label(
+            preview_panel, text="Prévia na folha A4 (linha vermelha = 13,9 cm)",
+            bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w", padx=20, pady=(0, 4))
+        self.vinyl_a4_canvas = tk.Canvas(
+            preview_panel, bg="#E5E0D6", highlightthickness=0, height=210
+        )
+        self.vinyl_a4_canvas.pack(fill="x", padx=20, pady=(0, 20))
+
+        actions = tk.Frame(preview_panel, bg=PANEL)
+        actions.pack(fill="x", padx=20, pady=(0, 16))
+        self.action_button(
+            actions, "Exportar adesivo", self.export_vinyl
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            actions, "Exportar para A4 (impressão)", self.export_vinyl_a4
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
+        actions2 = tk.Frame(preview_panel, bg=PANEL)
+        actions2.pack(fill="x", padx=20, pady=(0, 16))
+        self.action_button(
+            actions2, "Imprimir no Windows", self.print_vinyl_a4
+        ).pack(side="left", fill="x", expand=True)
+
+        self.update_vinyl_sheet_count()
+
+    def build_vinyl_grid(self, *args):
+        for slot in self.vinyl_slots:
+            slot.frame.destroy()
+        self.vinyl_slots.clear()
+        try:
+            n = self.vinyl_num_var.get()
+        except (tk.TclError, AttributeError):
+            n = 6
+        n = max(1, min(24, n))
+        for i in range(n):
+            card = VinylSlotCard(self.vinyl_grid, i, self.refresh_vinyl_preview)
+            card.frame.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+            self.vinyl_slots.append(card)
+        for c in range(3):
+            self.vinyl_grid.grid_columnconfigure(c, weight=1, uniform="vinyl")
+
+    def update_vinyl_scrollregion(self, event=None):
+        self.vinyl_canvas.configure(scrollregion=self.vinyl_canvas.bbox("all"))
+
+    def resize_vinyl_content(self, event):
+        self.vinyl_canvas.itemconfigure(
+            self.vinyl_window,
+            width=event.width,
+            height=max(
+                event.height,
+                self.vinyl_min_content_height,
+                self.vinyl_content.winfo_reqheight()
+            )
+        )
+
+    def bind_vinyl_mousewheel(self, event=None):
+        self.root.bind_all("<MouseWheel>", self.scroll_vinyl_with_mouse)
+
+    def unbind_vinyl_mousewheel(self, event=None):
+        self.root.unbind_all("<MouseWheel>")
+
+    def scroll_vinyl_with_mouse(self, event):
+        if event.delta:
+            self.vinyl_canvas.yview_scroll(
+                -int(event.delta / 120) * WHEEL_SCROLL_LINES, "units"
+            )
+
+    def _parse_vinyl_dims_silent(self):
+        try:
+            tw = float(self.vinyl_total_w.get().replace(",", "."))
+            th = float(self.vinyl_total_h.get().replace(",", "."))
+            iw = float(self.vinyl_img_w.get().replace(",", "."))
+            ih = float(self.vinyl_img_h.get().replace(",", "."))
+            return tw, th, iw, ih
+        except ValueError:
+            return None
+
+    def get_vinyl_dimensions(self):
+        try:
+            tw = float(self.vinyl_total_w.get().replace(",", "."))
+            th = float(self.vinyl_total_h.get().replace(",", "."))
+            iw = float(self.vinyl_img_w.get().replace(",", "."))
+            ih = float(self.vinyl_img_h.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Tamanho inválido", "Informe todas as dimensões usando números.")
+            return None
+        if not (0.5 <= tw <= 100 and 0.5 <= th <= 100 and 0.5 <= iw <= 100 and 0.5 <= ih <= 100):
+            messagebox.showerror("Tamanho inválido", "As dimensões devem estar entre 0,5 e 100 cm.")
+            return None
+        if tw > CRICUT_MAX_CM or th > CRICUT_MAX_CM:
+            messagebox.showerror(
+                "Largura/Altura excedida",
+                f"O adesivo não pode ter mais de {CRICUT_MAX_CM} cm.\n"
+                f"Valor informado: {tw:g} × {th:g} cm."
+            )
+            return None
+        if iw > tw or ih > th:
+            messagebox.showerror(
+                "Dimensão inválida",
+                "A imagem deve ser menor ou igual ao adesivo nos dois eixos."
+            )
+            return None
+        tw_px = int(round(tw / 2.54 * DPI))
+        th_px = int(round(th / 2.54 * DPI))
+        iw_px = int(round(iw / 2.54 * DPI))
+        ih_px = int(round(ih / 2.54 * DPI))
+        return tw, th, iw, ih, tw_px, th_px, iw_px, ih_px
+
+    def _make_vinyl_sticker(self, image, tw_px, th_px, iw_px, ih_px):
+        photo = cover_fit(image, iw_px, ih_px)
+        sticker = Image.new("RGB", (tw_px, th_px), "white")
+        x = (tw_px - iw_px) // 2
+        y = (th_px - ih_px) // 2
+        sticker.paste(photo, (x, y))
+        if self.vinyl_border_var.get():
+            draw = ImageDraw.Draw(sticker)
+            draw.rectangle(
+                (0, 0, tw_px - 1, th_px - 1),
+                outline=(0, 0, 0), width=2
+            )
+        return sticker
+
+    def build_vinyl_image(self):
+        if not self.vinyl_slots:
+            return None
+        first_with_photo = next((s for s in self.vinyl_slots if s.path), None)
+        if not first_with_photo:
+            messagebox.showwarning("Sem adesivos", "Adicione pelo menos um adesivo.")
+            return None
+        dims = self.get_vinyl_dimensions()
+        if dims is None:
+            return None
+        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        try:
+            image = first_with_photo.get_image()
+            sticker = self._make_vinyl_sticker(image, tw_px, th_px, iw_px, ih_px)
+            return sticker, tw, th, iw, ih
+        except Exception as exc:
+            messagebox.showerror("Erro", f"Não foi possível processar a imagem.\n\n{exc}")
+            return None
+
+    def refresh_vinyl_preview(self):
+        dims = self.get_vinyl_dimensions()
+        if dims is None:
+            return
+        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        first = next((s for s in self.vinyl_slots if s.path), None)
+        if first:
+            try:
+                image = first.get_image()
+                sticker = self._make_vinyl_sticker(image, tw_px, th_px, iw_px, ih_px)
+                preview = sticker.copy()
+                preview.thumbnail((560, 560), Image.Resampling.LANCZOS)
+                self.vinyl_preview_img = ImageTk.PhotoImage(preview)
+                self.vinyl_preview.configure(image=self.vinyl_preview_img, text="")
+                count = sum(1 for s in self.vinyl_slots if s.path)
+                self.vinyl_info.configure(
+                    text=f"{count} adesivo(s) • {tw:g} × {th:g} cm • imagem {iw:g} × {ih:g} cm"
+                )
+            except Exception:
+                pass
+        else:
+            self.vinyl_preview.configure(image="", text="Escolha uma foto para começar")
+            self.vinyl_info.configure(text="Nenhum adesivo adicionado")
+        self.refresh_vinyl_a4_preview()
+
+    def export_vinyl(self):
+        built = self.build_vinyl_image()
+        if built is None:
+            return
+        image, tw, th, iw, ih = built
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar adesivo",
+                defaultextension=".jpg",
+                initialfile=f"adesivo_{tw:g}x{th:g}cm_{save_timestamp()}",
+                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            ext = Path(path).suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                image.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
+            else:
+                image.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Arquivo criado",
+                f"Adesivo exportado com {tw:g} × {th:g} cm em 300 DPI."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def get_vinyl_sheet_grid(self):
+        dims = self.get_vinyl_dimensions()
+        if dims is None:
+            return None
+        _, _, _, _, tw_px, th_px, _, _ = dims
+        margin = int(round(1.5 / 2.54 * DPI))
+        gap = int(round(0.5 / 2.54 * DPI))
+        usable_w = A4_W - 2 * margin
+        usable_h = A4_H - 2 * margin
+        if tw_px > usable_w or th_px > usable_h:
+            return None
+        cols = (usable_w + gap) // (tw_px + gap)
+        rows = (usable_h + gap) // (th_px + gap)
+        if cols < 1 or rows < 1:
+            return None
+        total_width = cols * tw_px + (cols - 1) * gap
+        total_height = rows * th_px + (rows - 1) * gap
+        start_x = margin + (usable_w - total_width) // 2
+        start_y = margin + (usable_h - total_height) // 2
+        return margin, gap, tw_px, th_px, cols, rows, start_x, start_y
+
+    def update_vinyl_sheet_count(self, *args):
+        dims = self._parse_vinyl_dims_silent()
+        if dims is None:
+            self.vinyl_count_var.set("")
+            return
+        tw, th, iw, ih = dims
+        if not (0.5 <= tw <= 100 and 0.5 <= th <= 100 and 0.5 <= iw <= 100 and 0.5 <= ih <= 100):
+            self.vinyl_count_var.set("")
+            return
+        if tw > CRICUT_MAX_CM or th > CRICUT_MAX_CM:
+            self.vinyl_count_var.set(f"Largura ou altura > {CRICUT_MAX_CM} cm.")
+            return
+        if iw > tw or ih > th:
+            self.vinyl_count_var.set("Imagem maior que o adesivo.")
+            return
+        tw_px = int(round(tw / 2.54 * DPI))
+        th_px = int(round(th / 2.54 * DPI))
+        margin = int(round(1.5 / 2.54 * DPI))
+        gap = int(round(0.5 / 2.54 * DPI))
+        usable_w = A4_W - 2 * margin
+        usable_h = A4_H - 2 * margin
+        if tw_px > usable_w or th_px > usable_h:
+            self.vinyl_count_var.set("O adesivo é maior que a folha A4.")
+            return
+        cols = (usable_w + gap) // (tw_px + gap)
+        rows = (usable_h + gap) // (th_px + gap)
+        total_slots = cols * rows
+        photos = sum(1 for s in self.vinyl_slots if s.path) if hasattr(self, "vinyl_slots") else 0
+        self.vinyl_count_var.set(
+            f"Na folha A4 cabem {cols} × {rows} = {total_slots} adesivo(s)."
+            + (f"  ({photos} com foto)" if photos else "")
+        )
+        if hasattr(self, "vinyl_a4_canvas"):
+            if hasattr(self, "_vinyl_a4_job"):
+                self.root.after_cancel(self._vinyl_a4_job)
+            self._vinyl_a4_job = self.root.after(400, self.refresh_vinyl_a4_preview)
+
+    def _compose_vinyl_a4(self, grid):
+        dims = self.get_vinyl_dimensions()
+        _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
+        margin, gap, w, h, cols, rows, start_x, start_y = grid
+        sheet = Image.new("RGB", (A4_W, A4_H), "white")
+        slots_with_photo = [s for s in self.vinyl_slots if s.path]
+        slot_idx = 0
+        for r in range(rows):
+            for c in range(cols):
+                x = start_x + c * (w + gap)
+                y = start_y + r * (h + gap)
+                if slot_idx < len(slots_with_photo):
+                    img = slots_with_photo[slot_idx].get_image()
+                    sticker = self._make_vinyl_sticker(img, tw_px, th_px, iw_px, ih_px)
+                    sheet.paste(sticker, (x, y))
+                    slot_idx += 1
+                else:
+                    empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
+                    draw = ImageDraw.Draw(empty)
+                    draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
+                    sheet.paste(empty, (x, y))
+        draw = ImageDraw.Draw(sheet)
+        cut_line_y = int(round(CRICUT_MAX_CM / 2.54 * DPI))
+        if cut_line_y < A4_H:
+            draw.line(
+                (margin, cut_line_y, A4_W - margin, cut_line_y),
+                fill=(220, 40, 40), width=4
+            )
+            font = ImageFont.load_default()
+            for font_path in (
+                Path(__file__).parent / "arial.ttf",
+                Path("C:/Windows/Fonts/arial.ttf"),
+                Path("C:/Windows/Fonts/segoeui.ttf"),
+            ):
+                if font_path.exists():
+                    try:
+                        font = ImageFont.truetype(str(font_path), 36)
+                        break
+                    except Exception:
+                        pass
+            label_x = A4_W - margin - 20
+            label_y = cut_line_y + 6
+            draw.text(
+                (label_x, label_y),
+                f"{CRICUT_MAX_CM} cm",
+                fill=(220, 40, 40), anchor="rt",
+                font=font
+            )
+        return sheet
+
+    def refresh_vinyl_a4_preview(self):
+        canvas = self.vinyl_a4_canvas
+        canvas.delete("all")
+        width = max(100, canvas.winfo_width())
+        height = max(100, canvas.winfo_height())
+        has_photo = any(s.path for s in self.vinyl_slots)
+        if not has_photo:
+            canvas.create_text(
+                width // 2, height // 2,
+                text="Escolha uma foto para ver a folha A4",
+                fill=MUTED, font=("Segoe UI", 9)
+            )
+            return
+        grid = self.get_vinyl_sheet_grid()
+        if grid is None:
+            canvas.create_text(
+                width // 2, height // 2,
+                text="O adesivo não cabe na folha A4",
+                fill="#B00020", font=("Segoe UI", 9)
+            )
+            return
+        try:
+            sheet = self._compose_vinyl_a4(grid)
+        except Exception:
+            return
+        thumb = sheet.copy()
+        thumb.thumbnail((width - 16, height - 16), Image.Resampling.LANCZOS)
+        self.vinyl_a4_tk = ImageTk.PhotoImage(thumb)
+        canvas.create_image(width // 2, height // 2, image=self.vinyl_a4_tk)
+
+    def build_vinyl_a4_sheet(self):
+        has_photo = any(s.path for s in self.vinyl_slots)
+        if not has_photo:
+            messagebox.showwarning("Sem adesivos", "Adicione pelo menos um adesivo.")
+            return None
+        grid = self.get_vinyl_sheet_grid()
+        if grid is None:
+            messagebox.showwarning(
+                "Adesivo muito grande",
+                "O adesivo não cabe na folha A4. Reduza as dimensões."
+            )
+            return None
+        sheet = self._compose_vinyl_a4(grid)
+        dims = self.get_vinyl_dimensions()
+        tw, th = dims[0], dims[1]
+        margin, gap, w, h, cols, rows, start_x, start_y = grid
+        return sheet, cols, rows, tw, th
+
+    def export_vinyl_a4(self):
+        built_sheet = self.build_vinyl_a4_sheet()
+        if built_sheet is None:
+            return
+        sheet, cols, rows, tw, th = built_sheet
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar folha A4 de adesivos",
+                defaultextension=".jpg",
+                initialfile=f"folha_A4_adesivos_{tw:g}x{th:g}_{save_timestamp()}",
+                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            ext = Path(path).suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                sheet.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
+            else:
+                sheet.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Arquivo criado",
+                f"Folha A4 exportada com adesivos de {tw:g} × {th:g} cm em 300 DPI.\n"
+                f"A linha vermelha a {CRICUT_MAX_CM} cm indica a zona de corte da Cricut Joy."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def print_vinyl_a4(self):
+        has_photo = any(s.path for s in self.vinyl_slots)
+        if not has_photo:
+            messagebox.showwarning("Sem adesivos", "Adicione pelo menos um adesivo antes de imprimir.")
+            return
+        built_sheet = self.build_vinyl_a4_sheet()
+        if built_sheet is None:
+            return
+        sheet, cols, rows, tw, th = built_sheet
+        self.print_image(sheet, f"Folha A4 - Adesivos {tw:g}x{th:g} cm")
+
     def build_settings_tab(self):
         header = tk.Frame(
             self.settings_tab, bg=PANEL, height=76,
@@ -1674,7 +2977,12 @@ class App:
         return sheet
 
     def refresh_preview(self):
-        sheet = self.build_sheet()
+        if self.verso_var.get():
+            sheet = self.build_verso_sheet()
+            label = "Verso"
+        else:
+            sheet = self.build_sheet()
+            label = "Frente"
         preview = sheet.copy()
         preview.thumbnail((330, 465), Image.Resampling.LANCZOS)
         self.preview_img = ImageTk.PhotoImage(preview)
@@ -1686,7 +2994,7 @@ class App:
         self.canvas.create_image(x, y, anchor="nw", image=self.preview_img)
 
         count = sum(1 for s in self.slots if s.path)
-        self.status_var.set(f"{count} de 9 fotos adicionadas")
+        self.status_var.set(f"{count} de 9 fotos adicionadas • {label}")
 
     def clear_all(self):
         for slot in self.slots:
@@ -1696,6 +3004,7 @@ class App:
             slot.tk_img = None
             slot.preview.configure(image="", text="Clique para adicionar")
             slot.zoom_label.configure(text="100%")
+        self.verso_var.set(False)
         self.refresh_preview()
 
     def get_empty_slot(self):
@@ -1736,6 +3045,56 @@ class App:
             )
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
+
+    def build_verso_sheet(self):
+        sheet = self.build_sheet()
+        verso = ImageOps.flip(sheet)
+        try:
+            offset_mm = float(self.verso_offset_y.get().replace(",", "."))
+        except ValueError:
+            offset_mm = 0
+        offset_px = int(round(offset_mm / 25.4 * DPI))
+        if offset_px == 0:
+            return verso
+        result = Image.new("RGB", (A4_W, A4_H), "white")
+        result.paste(verso, (0, offset_px))
+        return result
+
+    def export_verso(self):
+        if not any(s.path for s in self.slots):
+            messagebox.showwarning("Sem fotos", "Adicione pelo menos uma foto antes de exportar.")
+            return
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar verso A4",
+                defaultextension=".jpg",
+                initialfile=f"verso_A4_9_fotos_6x9_{save_timestamp()}",
+                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            verso = self.build_verso_sheet()
+            ext = Path(path).suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                verso.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
+            else:
+                verso.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Arquivo criado",
+                "A página de verso foi exportada com sucesso.\n\n"
+                "Espelhamento vertical • 300 DPI"
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def print_verso(self):
+        if not any(s.path for s in self.slots):
+            messagebox.showwarning("Sem fotos", "Adicione pelo menos uma foto antes de imprimir.")
+            return
+        self.print_image(self.build_verso_sheet(), "Verso A4 - 9 Fotos 6x9 cm")
 
 
 if __name__ == "__main__":
