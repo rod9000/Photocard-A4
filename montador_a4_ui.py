@@ -1480,8 +1480,11 @@ class App:
             bg=PANEL, fg=MUTED, font=("Segoe UI", 10)
         ).pack(anchor="w", padx=24)
 
-        scroll_container = tk.Frame(self.polaroid_tab, bg=BG)
-        scroll_container.pack(fill="both", expand=True)
+        main_body = tk.Frame(self.polaroid_tab, bg=BG)
+        main_body.pack(fill="both", expand=True)
+
+        scroll_container = tk.Frame(main_body, bg=BG)
+        scroll_container.pack(side="left", fill="both", expand=True)
 
         self.polaroid_canvas = tk.Canvas(
             scroll_container, bg=BG, highlightthickness=0
@@ -1506,11 +1509,8 @@ class App:
         scroll_container.bind("<Enter>", self.bind_polaroid_mousewheel)
         scroll_container.bind("<Leave>", self.unbind_polaroid_mousewheel)
 
-        left_col = tk.Frame(content, bg=BG)
-        left_col.pack(side="left", fill="both", expand=True)
-
         controls = tk.Frame(
-            left_col, bg=PANEL,
+            content, bg=PANEL,
             highlightbackground=BORDER, highlightthickness=1
         )
         controls.pack(fill="x")
@@ -1563,15 +1563,15 @@ class App:
             justify="left", font=("Segoe UI", 9), wraplength=290
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
-        self.polaroid_grid = tk.Frame(left_col, bg=BG)
+        self.polaroid_grid = tk.Frame(content, bg=BG)
         self.polaroid_grid.pack(fill="both", expand=True, pady=(10, 0))
         self.polaroid_slots = []
         self.build_polaroid_grid()
 
         preview_panel = tk.Frame(
-            content, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
+            main_body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
         )
-        preview_panel.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        preview_panel.pack(side="right", fill="y", padx=(20, 0))
         tk.Label(
             preview_panel, text="Prévia", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 14, "bold")
