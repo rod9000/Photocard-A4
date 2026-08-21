@@ -12,7 +12,7 @@ import urllib.request
 import uuid
 from ctypes import wintypes
 from datetime import datetime
-from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin, ImageFont
+from PIL import Image, ImageTk, ImageOps, ImageDraw, ImageWin, ImageFont, ImageFilter
 from buttons_tab import ButtonsTab
 
 DPI = 300
@@ -414,7 +414,7 @@ class VinylSlotCard:
             return
         if path:
             self.path = path
-            self.rotation = 0
+            self.rotation = 90
             self.refresh()
             self.callback()
 
@@ -441,6 +441,10 @@ class VinylSlotCard:
             img = ImageOps.exif_transpose(img)
             if self.rotation:
                 img = img.rotate(-self.rotation, expand=True)
+            if img.mode == "RGBA":
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[3])
+                return bg
             return img.convert("RGB")
         except Exception:
             return None
@@ -511,14 +515,15 @@ class App:
         self.polaroid_img_w.trace_add("write", self.update_polaroid_sheet_count)
         self.polaroid_img_h.trace_add("write", self.update_polaroid_sheet_count)
 
-        self.vinyl_total_w = tk.StringVar(value="13.9")
-        self.vinyl_total_h = tk.StringVar(value="13.9")
-        self.vinyl_img_w = tk.StringVar(value="13")
-        self.vinyl_img_h = tk.StringVar(value="13")
+        self.vinyl_total_w = tk.StringVar(value="5")
+        self.vinyl_total_h = tk.StringVar(value="5")
+        self.vinyl_img_w = tk.StringVar(value="5")
+        self.vinyl_img_h = tk.StringVar(value="5")
         self.vinyl_border_var = tk.BooleanVar(value=False)
+        self.vinyl_transparent_var = tk.BooleanVar(value=False)
         self.vinyl_count_var = tk.StringVar(value="")
-        self.vinyl_num_top = tk.IntVar(value=9)
-        self.vinyl_num_bottom = tk.IntVar(value=9)
+        self.vinyl_num_top = tk.IntVar(value=6)
+        self.vinyl_num_bottom = tk.IntVar(value=6)
         self.vinyl_total_w.trace_add("write", self.update_vinyl_sheet_count)
         self.vinyl_total_h.trace_add("write", self.update_vinyl_sheet_count)
         self.vinyl_img_w.trace_add("write", self.update_vinyl_sheet_count)
@@ -2100,6 +2105,12 @@ class App:
             activebackground=PANEL, font=("Segoe UI", 9)
         ).pack(anchor="w", padx=20, pady=(0, 6))
 
+        tk.Checkbutton(
+            controls, text="Exportar sem fundo (transparente)", variable=self.vinyl_transparent_var,
+            bg=PANEL, fg=TEXT,
+            activebackground=PANEL, font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=20, pady=(0, 6))
+
         tk.Label(
             controls, textvariable=self.vinyl_count_var, bg=PANEL, fg=MUTED,
             justify="left", font=("Segoe UI", 9), wraplength=0
@@ -2136,12 +2147,17 @@ class App:
             font=("Segoe UI", 10)
         ).pack(side="left", padx=(8, 0))
 
-        tk.Label(
-            controls,
-            text="Linha de corte no meio da folha A4.\n"
-                 "Cricut Joy corta meia folha por vez.",
-            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
-        ).pack(anchor="w", padx=20, pady=(0, 6))
+        self.action_button(
+            controls, "Atualizar prévia", self.refresh_vinyl_preview
+        ).pack(fill="x", padx=20, pady=(0, 10))
+
+        self.action_button(
+            controls, "Importar vários (parte de cima)", lambda: self.import_vinyl_batch("top"), secondary=True
+        ).pack(fill="x", padx=20, pady=(0, 6))
+
+        self.action_button(
+            controls, "Importar vários (parte de baixo)", lambda: self.import_vinyl_batch("bot"), secondary=True
+        ).pack(fill="x", padx=20, pady=(0, 10))
 
         self.vinyl_grid = tk.Frame(content, bg=BG)
         self.vinyl_grid.pack(fill="both", expand=True, pady=(10, 0))
@@ -2180,18 +2196,12 @@ class App:
         tk.Label(
             preview_panel, text="Prévia", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 14, "bold")
-        ).pack(anchor="w", padx=20, pady=(20, 4))
+        ).pack(anchor="w", padx=20, pady=(0, 4))
         self.vinyl_info = tk.Label(
             preview_panel, text="Nenhum adesivo adicionado",
             bg=PANEL, fg=MUTED, font=("Segoe UI", 9)
         )
-        self.vinyl_info.pack(anchor="w", padx=20)
-
-        self.vinyl_preview = tk.Label(
-            preview_panel, text="Escolha uma foto para começar",
-            bg="#E5E0D6", fg=MUTED, font=("Segoe UI", 11)
-        )
-        self.vinyl_preview.pack(fill="x", padx=20, pady=12)
+        self.vinyl_info.pack(anchor="w", padx=20, pady=(0, 8))
 
         tk.Label(
             preview_panel, text="Prévia na folha A4", bg=PANEL, fg=TEXT,
@@ -2211,10 +2221,25 @@ class App:
             actions, "Exportar para A4", self.export_vinyl_a4
         ).pack(side="left", fill="x", expand=True, padx=(4, 0))
         actions2 = tk.Frame(preview_panel, bg=PANEL)
-        actions2.pack(fill="x", padx=20, pady=(0, 16))
+        actions2.pack(fill="x", padx=20, pady=(0, 8))
         self.action_button(
             actions2, "Imprimir no Windows", self.print_vinyl_a4
-        ).pack(side="left", fill="x", expand=True)
+        ).pack(fill="x", expand=True)
+
+        actions3 = tk.Frame(preview_panel, bg=PANEL)
+        actions3.pack(fill="x", padx=20, pady=(0, 16))
+        self.action_button(
+            actions3, "Exportar imagens sem fundo",
+            self.export_vinyl_images_transparent, secondary=True
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            actions3, "SVG Topo (Cricut)",
+            lambda: self.export_vinyl_svg("top"), secondary=True
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            actions3, "SVG Baixo (Cricut)",
+            lambda: self.export_vinyl_svg("bot"), secondary=True
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
 
         preview_scroll.bind("<Enter>", lambda e: self.root.bind_all(
             "<MouseWheel>", lambda ev: preview_canvas.yview_scroll(
@@ -2370,30 +2395,50 @@ class App:
             messagebox.showerror("Erro", f"Não foi possível processar a imagem.\n\n{exc}")
             return None
 
+    def import_vinyl_batch(self, zone="top"):
+        try:
+            n_top = max(0, self.vinyl_num_top.get())
+        except (tk.TclError, AttributeError):
+            n_top = 0
+        try:
+            n_bot = max(0, self.vinyl_num_bottom.get())
+        except (tk.TclError, AttributeError):
+            n_bot = 0
+        if zone == "top":
+            title = "Escolher adesivos (parte de cima)"
+            slots = self.vinyl_slots[:n_top]
+        else:
+            title = "Escolher adesivos (parte de baixo)"
+            slots = self.vinyl_slots[n_top:n_top + n_bot]
+        try:
+            paths = filedialog.askopenfilenames(
+                title=title,
+                filetypes=[("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not paths:
+            return
+        for i, path in enumerate(paths):
+            if i >= len(slots):
+                break
+            slot = slots[i]
+            slot.path = path
+            slot.rotation = 90
+            slot.refresh()
+        self.refresh_vinyl_preview()
+
     def refresh_vinyl_preview(self):
         dims = self.get_vinyl_dimensions()
         if dims is None:
             return
         tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
-        first = next((s for s in self.vinyl_slots if s.path), None)
-        if first:
-            try:
-                image = first.get_image()
-                sticker = self._make_vinyl_sticker(image, tw_px, th_px, iw_px, ih_px)
-                preview = sticker.copy()
-                pw = max(100, self.vinyl_preview.winfo_width() - 10)
-                ph = max(100, self.vinyl_preview.winfo_height() - 10)
-                preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
-                self.vinyl_preview_img = ImageTk.PhotoImage(preview)
-                self.vinyl_preview.configure(image=self.vinyl_preview_img, text="")
-                count = sum(1 for s in self.vinyl_slots if s.path)
-                self.vinyl_info.configure(
-                    text=f"{count} adesivo(s) • {tw:g} × {th:g} cm • imagem {iw:g} × {ih:g} cm"
-                )
-            except Exception:
-                pass
+        count = sum(1 for s in self.vinyl_slots if s.path)
+        if count:
+            self.vinyl_info.configure(
+                text=f"{count} adesivo(s) • {tw:g} × {th:g} cm • imagem {iw:g} × {ih:g} cm"
+            )
         else:
-            self.vinyl_preview.configure(image="", text="Escolha uma foto para começar")
             self.vinyl_info.configure(text="Nenhum adesivo adicionado")
         self.refresh_vinyl_a4_preview()
 
@@ -2435,15 +2480,18 @@ class App:
             return None
         margin = int(round(1.5 / 2.54 * DPI))
         gap = int(round(0.5 / 2.54 * DPI))
-        usable_w = A4_W - 2 * margin
-        half_h = A4_H // 2
-        zone_top = (margin, half_h - gap)
-        zone_bot = (half_h + gap, A4_H - margin)
-        cols = (usable_w + gap) // (tw_px + gap)
+        zone_w = int(round(16.5 / 2.54 * DPI))
+        zone_h = int(round(11.5 / 2.54 * DPI))
+        zone_x = (A4_W - zone_w) // 2
+        zone_y = margin
+        cut_y = int(round(14.0 / 2.54 * DPI))
+        zone_top = (zone_x, zone_y, zone_x + zone_w, cut_y - gap)
+        zone_bot = (zone_x, cut_y + gap, zone_x + zone_w, cut_y + gap + zone_h)
+        cols = (zone_w + gap) // (tw_px + gap)
         if cols < 1:
             return None
-        zone_top_h = zone_top[1] - zone_top[0]
-        zone_bot_h = zone_bot[1] - zone_bot[0]
+        zone_top_h = zone_top[3] - zone_top[1]
+        zone_bot_h = zone_bot[3] - zone_bot[1]
         rows_top = max(0, (zone_top_h + gap) // (th_px + gap)) if zone_top_h > 0 else 0
         rows_bot = max(0, (zone_bot_h + gap) // (th_px + gap)) if zone_bot_h > 0 else 0
         cap_top = cols * rows_top
@@ -2464,6 +2512,7 @@ class App:
             "zone_top": zone_top, "zone_bot": zone_bot,
             "n_top": n_top, "n_bot": n_bot,
             "cap_top": cap_top, "cap_bot": cap_bot,
+            "zone_x": zone_x, "zone_w": zone_w,
         }
 
     def _get_font(self, size=36):
@@ -2515,7 +2564,6 @@ class App:
     def _compose_vinyl_a4(self, layout):
         dims = self.get_vinyl_dimensions()
         _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
-        margin = layout["margin"]
         gap = layout["gap"]
         cols = layout["cols"]
         rows_top = layout["rows_top"]
@@ -2524,19 +2572,37 @@ class App:
         zone_bot = layout["zone_bot"]
         n_top = layout["n_top"]
         n_bot = layout["n_bot"]
-        usable_w = A4_W - 2 * margin
-        sheet = Image.new("RGB", (A4_W, A4_H), "white")
+        zone_x = layout["zone_x"]
+        zone_w = layout["zone_w"]
+        transparent = self.vinyl_transparent_var.get()
+        if transparent:
+            sheet = Image.new("RGBA", (A4_W, A4_H), (0, 0, 0, 0))
+        else:
+            sheet = Image.new("RGB", (A4_W, A4_H), "white")
         font = self._get_font(36)
         font_sm = self._get_font(28)
 
-        slots_with_photo = [s for s in self.vinyl_slots if s.path]
-        all_count = n_top + n_bot
+        draw_all = ImageDraw.Draw(sheet)
+        border_color = (0, 0, 0, 255) if transparent else (0, 0, 0)
+        draw_all.rectangle(
+            (zone_top[0], zone_top[1], zone_top[2], zone_top[3]),
+            outline=border_color, width=8
+        )
+        if n_bot > 0:
+            draw_all.rectangle(
+                (zone_bot[0], zone_bot[1], zone_bot[2], zone_bot[3]),
+                outline=border_color, width=8
+            )
 
-        def _draw_zone(zone_y0, zone_y1, rows, zone_photos, label):
+        top_photos = [s for s in self.vinyl_slots[:n_top] if s.path]
+        bot_photos = [s for s in self.vinyl_slots[n_top:n_top + n_bot] if s.path]
+
+        def _draw_zone(zone_x0, zone_y0, zone_x1, zone_y1, rows, zone_photos, label):
             zone_h = zone_y1 - zone_y0
+            zone_w_local = zone_x1 - zone_x0
             total_grid_w = cols * tw_px + (cols - 1) * gap
             total_grid_h = rows * th_px + (rows - 1) * gap
-            bx = margin + (usable_w - total_grid_w) // 2
+            bx = zone_x0 + (zone_w_local - total_grid_w) // 2
             by = zone_y0 + (zone_h - total_grid_h) // 2
             slot_i = 0
             for r in range(rows):
@@ -2547,42 +2613,21 @@ class App:
                     y = by + r * (th_px + gap)
                     img = zone_photos[slot_i].get_image()
                     sticker = self._make_vinyl_sticker(img, tw_px, th_px, iw_px, ih_px)
+                    if transparent:
+                        sticker = sticker.convert("RGBA")
                     sheet.paste(sticker, (x, y))
                     slot_i += 1
             draw = ImageDraw.Draw(sheet)
-            draw.rectangle(
-                (margin, zone_y0, margin + usable_w, zone_y1),
-                outline=(200, 200, 200), width=2
-            )
+            label_color = (140, 140, 140, 255) if transparent else (140, 140, 140)
             draw.text(
-                (margin + 8, zone_y0 + 6),
-                label, fill=(140, 140, 140), font=font_sm
+                (zone_x0 + 8, zone_y0 + 6),
+                label, fill=label_color, font=font_sm
             )
-
-        top_photos = slots_with_photo[:n_top]
-        bot_photos = slots_with_photo[n_top:n_top + n_bot]
 
         if n_top > 0:
-            _draw_zone(zone_top[0], zone_top[1], rows_top, top_photos, "Parte de cima")
+            _draw_zone(zone_top[0], zone_top[1], zone_top[2], zone_top[3], rows_top, top_photos, "Parte de cima")
         if n_bot > 0:
-            _draw_zone(zone_bot[0], zone_bot[1], rows_bot, bot_photos, "Parte de baixo")
-
-        cut_y = A4_H // 2
-        draw = ImageDraw.Draw(sheet)
-        draw.line(
-            (margin, cut_y, margin + usable_w, cut_y),
-            fill=(220, 40, 40), width=4
-        )
-        for dash_x in range(margin, margin + usable_w, 30):
-            draw.line(
-                (dash_x, cut_y - 6, dash_x + 15, cut_y - 6),
-                fill=(220, 40, 40), width=2
-            )
-        draw.text(
-            (margin + usable_w - 10, cut_y - 34),
-            "✂ CORTAR AQUI ✂",
-            fill=(220, 40, 40), anchor="rt", font=font
-        )
+            _draw_zone(zone_bot[0], zone_bot[1], zone_bot[2], zone_bot[3], rows_bot, bot_photos, "Parte de baixo")
 
         return sheet
 
@@ -2652,12 +2697,17 @@ class App:
             return
         sheet, layout, tw, th = built_sheet
         n_top, n_bot = layout["n_top"], layout["n_bot"]
+        transparent = self.vinyl_transparent_var.get()
         try:
+            if transparent:
+                filetypes = [("PNG", "*.png")]
+            else:
+                filetypes = [("JPEG", "*.jpg"), ("PNG", "*.png")]
             path = filedialog.asksaveasfilename(
                 title="Salvar folha A4 de adesivos",
-                defaultextension=".jpg",
+                defaultextension=".png" if transparent else ".jpg",
                 initialfile=f"folha_A4_adesivos_{tw:g}x{th:g}_{save_timestamp()}",
-                filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")]
+                filetypes=filetypes
             )
         except KeyboardInterrupt:
             return
@@ -2665,14 +2715,184 @@ class App:
             return
         try:
             ext = Path(path).suffix.lower()
-            if ext in (".jpg", ".jpeg"):
-                sheet.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
-            else:
+            if transparent or ext in (".png",):
+                if sheet.mode != "RGBA":
+                    sheet = sheet.convert("RGBA")
                 sheet.save(path, "PNG", dpi=(DPI, DPI))
+            else:
+                sheet.save(path, "JPEG", quality=95, dpi=(DPI, DPI), subsampling=0)
             messagebox.showinfo(
                 "Arquivo criado",
                 f"Folha A4 exportada com adesivos de {tw:g} × {th:g} cm em 300 DPI.\n"
                 f"Cima: {n_top} • Baixo: {n_bot} • Linha de corte no meio."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def export_vinyl_svg(self, zone="top"):
+        layout = self.get_vinyl_zone_layout()
+        if layout is None:
+            messagebox.showwarning(
+                "Adesivo muito grande",
+                "O adesivo não cabe na folha A4. Reduza as dimensões."
+            )
+            return
+        dims = self.get_vinyl_dimensions()
+        if dims is None:
+            return
+        _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
+        n_top = layout["n_top"]
+        n_bot = layout["n_bot"]
+        if zone == "top":
+            slots = self.vinyl_slots[:n_top]
+        else:
+            slots = self.vinyl_slots[n_top:n_top + n_bot]
+        photos = [s for s in slots if s.path]
+        if not photos:
+            messagebox.showwarning("Sem adesivo", "Adicione adesivos nessa zona.")
+            return
+        label = "Parte de cima" if zone == "top" else "Parte de baixo"
+        try:
+            path = filedialog.asksaveasfilename(
+                title=f"Salvar silhueta PNG — {label}",
+                defaultextension=".png",
+                initialfile=f"silhueta_{zone}_{save_timestamp()}",
+                filetypes=[("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            gap = layout["gap"]
+            cols = layout["cols"]
+            if zone == "top":
+                zone_coords = layout["zone_top"]
+                rows = layout["rows_top"]
+            else:
+                zone_coords = layout["zone_bot"]
+                rows = layout["rows_bot"]
+            zx, zy, zx2, zy2 = zone_coords
+            zw = zx2 - zx
+            zh = zy2 - zy
+            total_grid_w = cols * tw_px + (cols - 1) * gap
+            total_grid_h = rows * th_px + (rows - 1) * gap
+            bx = zx + (zw - total_grid_w) // 2
+            by = zy + (zh - total_grid_h) // 2
+            sheet = Image.new("RGBA", (zw, zh), (0, 0, 0, 0))
+            slot_i = 0
+            for r in range(rows):
+                for c in range(cols):
+                    if slot_i >= len(photos):
+                        break
+                    x = bx + c * (tw_px + gap) - zx
+                    y = by + r * (th_px + gap) - zy
+                    img = photos[slot_i].get_image()
+                    if img is None:
+                        slot_i += 1
+                        continue
+                    fitted = cover_fit(img, iw_px, ih_px)
+                    gray = fitted.convert("L")
+                    mask = gray.point(lambda p: 255 if p < 240 else 0)
+                    mask = mask.filter(ImageFilter.MaxFilter(5))
+                    silhouette = Image.new("RGBA", fitted.size, (0, 0, 0, 0))
+                    black_layer = Image.new("RGBA", fitted.size, (0, 0, 0, 255))
+                    silhouette.paste(black_layer, (0, 0), mask)
+                    sticker = Image.new("RGBA", (tw_px, th_px), (0, 0, 0, 0))
+                    sx = (tw_px - fitted.width) // 2
+                    sy = (th_px - fitted.height) // 2
+                    sticker.paste(silhouette, (sx, sy), silhouette)
+                    sheet.paste(sticker, (x, y), sticker)
+                    slot_i += 1
+            sheet.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Silhueta exportada",
+                f"Silhueta exportada ({label}).\n"
+                f"{len(photos)} adesivo(s) em preto sobre fundo transparente.\n"
+                f"Importe em programa de vetorização para gerar SVG."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro", str(exc))
+
+    def export_vinyl_images_transparent(self):
+        layout = self.get_vinyl_zone_layout()
+        if layout is None:
+            messagebox.showwarning(
+                "Adesivo muito grande",
+                "O adesivo não cabe na folha A4. Reduza as dimensões."
+            )
+            return
+        dims = self.get_vinyl_dimensions()
+        if dims is None:
+            return
+        _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
+        n_top = layout["n_top"]
+        n_bot = layout["n_bot"]
+        all_photos_top = [s for s in self.vinyl_slots[:n_top] if s.path]
+        all_photos_bot = [s for s in self.vinyl_slots[n_top:n_top + n_bot] if s.path]
+        all_photos = all_photos_top + all_photos_bot
+        if not all_photos:
+            messagebox.showwarning("Sem imagens", "Adicione imagens antes de exportar.")
+            return
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Salvar imagens sem fundo",
+                defaultextension=".png",
+                initialfile=f"vinyl_sem_fundo_{save_timestamp()}",
+                filetypes=[("PNG", "*.png")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not path:
+            return
+        try:
+            gap = layout["gap"]
+            cols = layout["cols"]
+            zone_top = layout["zone_top"]
+            zone_bot = layout["zone_bot"]
+            rows_top = layout["rows_top"]
+            rows_bot = layout["rows_bot"]
+
+            sheet = Image.new("RGBA", (A4_W, A4_H), (0, 0, 0, 0))
+
+            def _paste_zone(zone_coords, rows, zone_photos):
+                zx, zy, zx2, zy2 = zone_coords
+                zw = zx2 - zx
+                zh = zy2 - zy
+                total_grid_w = cols * tw_px + (cols - 1) * gap
+                total_grid_h = rows * th_px + (rows - 1) * gap
+                bx = zx + (zw - total_grid_w) // 2
+                by = zy + (zh - total_grid_h) // 2
+                slot_i = 0
+                for r in range(rows):
+                    for c in range(cols):
+                        if slot_i >= len(zone_photos):
+                            return
+                        x = bx + c * (tw_px + gap)
+                        y = by + r * (th_px + gap)
+                        img = zone_photos[slot_i].get_image()
+                        if img is None:
+                            slot_i += 1
+                            continue
+                        fitted = cover_fit(img, iw_px, ih_px)
+                        sticker = Image.new("RGBA", (tw_px, th_px), (0, 0, 0, 0))
+                        sx = (tw_px - fitted.width) // 2
+                        sy = (th_px - fitted.height) // 2
+                        sticker.paste(fitted, (sx, sy))
+                        sticker_rgba = sticker.convert("RGBA")
+                        sheet.paste(sticker_rgba, (x, y), sticker_rgba)
+                        slot_i += 1
+
+            if n_top > 0:
+                _paste_zone(zone_top, rows_top, all_photos_top)
+            if n_bot > 0:
+                _paste_zone(zone_bot, rows_bot, all_photos_bot)
+
+            sheet.save(path, "PNG", dpi=(DPI, DPI))
+            messagebox.showinfo(
+                "Imagens exportadas",
+                f"Imagens exportadas sem fundo.\n"
+                f"{len(all_photos)} imagem(ns) no layout A4."
             )
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
@@ -2686,6 +2906,10 @@ class App:
         if built_sheet is None:
             return
         sheet, layout, tw, th = built_sheet
+        if sheet.mode == "RGBA":
+            bg = Image.new("RGB", sheet.size, (255, 255, 255))
+            bg.paste(sheet, mask=sheet.split()[3])
+            sheet = bg
         self.print_image(sheet, f"Folha A4 - Adesivos {tw:g}x{th:g} cm")
 
     def build_settings_tab(self):
