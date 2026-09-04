@@ -284,7 +284,9 @@ class ButtonsTab:
             ttk.Button(toolbar, text=text, command=cmd).pack(side="left", padx=(0, 8))
 
         columns = ("idx", "name", "status")
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="tree headings", height=18)
+        style = ttk.Style()
+        style.configure("Thumb.Treeview", rowheight=THUMB_SIZE + 8)
+        self.tree = ttk.Treeview(list_frame, columns=columns, show="tree headings", height=18, style="Thumb.Treeview")
         self.tree.heading("#0", text="Thumb")
         self.tree.heading("idx", text="#")
         self.tree.heading("name", text="Arquivo")
@@ -337,18 +339,24 @@ class ButtonsTab:
 
         ttk.Label(controls, text="Zoom").grid(row=0, column=0, sticky="w")
         ttk.Scale(controls, from_=1.0, to=2.5, variable=self.zoom_var, orient="horizontal", command=self.on_manual_slider_change).grid(row=0, column=1, sticky="ew", padx=8)
-        self.zoom_lbl = ttk.Label(controls, text="1.00")
-        self.zoom_lbl.grid(row=0, column=2)
+        self.zoom_entry = ttk.Entry(controls, textvariable=self.zoom_var, width=6, justify="center")
+        self.zoom_entry.grid(row=0, column=2)
+        self.zoom_entry.bind("<FocusOut>", self._on_entry_change)
+        self.zoom_entry.bind("<Return>", self._on_entry_change)
 
         ttk.Label(controls, text="Offset X").grid(row=1, column=0, sticky="w")
         ttk.Scale(controls, from_=-1.0, to=1.0, variable=self.offset_x_var, orient="horizontal", command=self.on_manual_slider_change).grid(row=1, column=1, sticky="ew", padx=8)
-        self.offx_lbl = ttk.Label(controls, text="0.00")
-        self.offx_lbl.grid(row=1, column=2)
+        self.offx_entry = ttk.Entry(controls, textvariable=self.offset_x_var, width=6, justify="center")
+        self.offx_entry.grid(row=1, column=2)
+        self.offx_entry.bind("<FocusOut>", self._on_entry_change)
+        self.offx_entry.bind("<Return>", self._on_entry_change)
 
         ttk.Label(controls, text="Offset Y").grid(row=2, column=0, sticky="w")
         ttk.Scale(controls, from_=-1.0, to=1.0, variable=self.offset_y_var, orient="horizontal", command=self.on_manual_slider_change).grid(row=2, column=1, sticky="ew", padx=8)
-        self.offy_lbl = ttk.Label(controls, text="0.00")
-        self.offy_lbl.grid(row=2, column=2)
+        self.offy_entry = ttk.Entry(controls, textvariable=self.offset_y_var, width=6, justify="center")
+        self.offy_entry.grid(row=2, column=2)
+        self.offy_entry.bind("<FocusOut>", self._on_entry_change)
+        self.offy_entry.bind("<Return>", self._on_entry_change)
 
         controls.columnconfigure(1, weight=1)
 
@@ -523,9 +531,11 @@ class ButtonsTab:
         idxs = self.get_selected_indices_from_tree()
         if not idxs:
             return
-        idx = idxs[0]
-        item = self.items[idx]
-        self.items.insert(idx + 1, ImageItem(**asdict(item)))
+        offset = 0
+        for idx in idxs:
+            item = self.items[idx + offset]
+            self.items.insert(idx + offset + 1, ImageItem(**asdict(item)))
+            offset += 1
         self.refresh_controls()
         self.clear_preview_cache()
 
@@ -631,19 +641,44 @@ class ButtonsTab:
 
     # --- MANUAL ---
 
+    def _sync_entry_to_slider(self, var, min_val, max_val):
+        try:
+            val = float(str(var.get()).replace(",", "."))
+            val = max(min_val, min(max_val, val))
+        except Exception:
+            return
+
+    def _on_entry_change(self, event=None):
+        if self.manual_selected_index is None:
+            return
+        item = self.items[self.manual_selected_index]
+        try:
+            item.zoom = max(1.0, min(2.5, float(str(self.zoom_var.get()).replace(",", "."))))
+            item.offset_x = max(-1.0, min(1.0, float(str(self.offset_x_var.get()).replace(",", "."))))
+            item.offset_y = max(-1.0, min(1.0, float(str(self.offset_y_var.get()).replace(",", "."))))
+        except Exception:
+            return
+        self.clear_preview_cache()
+        self.update_manual_preview()
+
     def update_manual_labels(self):
-        self.zoom_lbl.config(text=f"{self.zoom_var.get():.2f}")
-        self.offx_lbl.config(text=f"{self.offset_x_var.get():.2f}")
-        self.offy_lbl.config(text=f"{self.offset_y_var.get():.2f}")
+        pass
 
     def on_manual_slider_change(self, _event=None):
         self.update_manual_labels()
         if self.manual_selected_index is None or not (0 <= self.manual_selected_index < len(self.items)):
             return
-        item = self.items[self.manual_selected_index]
-        item.zoom = float(self.zoom_var.get())
-        item.offset_x = float(self.offset_x_var.get())
-        item.offset_y = float(self.offset_y_var.get())
+        zoom = float(self.zoom_var.get())
+        offset_x = float(self.offset_x_var.get())
+        offset_y = float(self.offset_y_var.get())
+        idxs = self.get_selected_indices_from_tree()
+        if not idxs:
+            idxs = [self.manual_selected_index]
+        for idx in idxs:
+            if 0 <= idx < len(self.items):
+                self.items[idx].zoom = zoom
+                self.items[idx].offset_x = offset_x
+                self.items[idx].offset_y = offset_y
         self.clear_preview_cache()
         self.update_manual_preview()
 
@@ -693,6 +728,16 @@ class ButtonsTab:
             x = (MANUAL_PREVIEW_SIZE - preview.width) // 2
             y = (MANUAL_PREVIEW_SIZE - preview.height) // 2
             self.manual_canvas.create_image(x, y, anchor="nw", image=self.manual_preview_photo)
+            cx = x + preview.width // 2
+            cy = y + preview.height // 2
+            scale = preview.width / outer_px if outer_px else 1.0
+            r = int(inner_px * scale) // 2
+            self.manual_canvas.create_oval(
+                cx - r, cy - r, cx + r, cy + r,
+                outline="#FF0000", width=2, dash=(4, 4)
+            )
+            self.manual_canvas.create_line(cx - r, cy, cx + r, cy, fill="#FF0000", width=1, dash=(4, 4))
+            self.manual_canvas.create_line(cx, cy - r, cx, cy + r, fill="#FF0000", width=1, dash=(4, 4))
             self.manual_status.config(text=os.path.basename(item.path))
         except Exception as e:
             self.manual_status.config(text=f"Erro no preview manual: {e}")

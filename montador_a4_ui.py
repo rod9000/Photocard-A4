@@ -6,6 +6,7 @@ import base64
 import ctypes
 import io
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -473,6 +474,7 @@ class App:
 
         self.status_var = tk.StringVar(value="Nenhuma foto adicionada")
         self.border_var = tk.BooleanVar(value=False)
+        self.montage_duplicate_var = tk.BooleanVar(value=False)
         self.verso_var = tk.BooleanVar(value=False)
         self.verso_offset_y = tk.StringVar(value="0")
         self.preview_img = None
@@ -503,13 +505,16 @@ class App:
         self.polaroid_path = None
         self.polaroid_rotation = 0
         self.polaroid_preview_img = None
-        self.polaroid_total_w = tk.StringVar(value="10.8")
+        self.polaroid_total_w = tk.StringVar(value="5.4")
         self.polaroid_total_h = tk.StringVar(value="8.6")
-        self.polaroid_img_w = tk.StringVar(value="7.9")
-        self.polaroid_img_h = tk.StringVar(value="7.9")
+        self.polaroid_img_w = tk.StringVar(value="4.6")
+        self.polaroid_img_h = tk.StringVar(value="6.2")
         self.polaroid_border_var = tk.BooleanVar(value=False)
+        self.polaroid_duplicate_var = tk.BooleanVar(value=False)
         self.polaroid_count_var = tk.StringVar(value="")
-        self.polaroid_num_var = tk.IntVar(value=4)
+        self.polaroid_num_var = tk.IntVar(value=9)
+        self.polaroid_border_top = tk.StringVar(value="0.5")
+        self.polaroid_border_left = tk.StringVar(value="0.4")
         self.polaroid_total_w.trace_add("write", self.update_polaroid_sheet_count)
         self.polaroid_total_h.trace_add("write", self.update_polaroid_sheet_count)
         self.polaroid_img_w.trace_add("write", self.update_polaroid_sheet_count)
@@ -638,6 +643,11 @@ class App:
         tk.Checkbutton(
             grid_header, text="Borda preta nas fotos", variable=self.border_var,
             command=self.refresh_preview, bg=BG, fg=TEXT, activebackground=BG,
+            font=("Segoe UI", 9)
+        ).pack(side="right", padx=8)
+        tk.Checkbutton(
+            grid_header, text="Duplicar fotos para preencher A4", variable=self.montage_duplicate_var,
+            bg=BG, fg=TEXT, activebackground=BG,
             font=("Segoe UI", 9)
         ).pack(side="right", padx=8)
 
@@ -1585,43 +1595,99 @@ class App:
             font=("Segoe UI", 14, "bold")
         ).pack(anchor="w", padx=20, pady=(16, 10))
 
+        profiles_frame = tk.Frame(controls, bg=PANEL)
+        profiles_frame.pack(fill="x", padx=20, pady=(0, 10))
         tk.Label(
-            controls, text="Dimensões do frame (cm)", bg=PANEL, fg=TEXT,
+            profiles_frame, text="Perfil", bg=PANEL, fg=TEXT,
             font=("Segoe UI", 10, "bold")
-        ).pack(anchor="w", padx=20)
-        total_dims = tk.Frame(controls, bg=PANEL)
-        total_dims.pack(fill="x", padx=20, pady=(4, 8))
-        self._dimension_field(total_dims, "Largura total", self.polaroid_total_w).pack(
-            side="left", fill="x", expand=True, padx=(0, 5)
-        )
-        self._dimension_field(total_dims, "Altura total", self.polaroid_total_h).pack(
-            side="left", fill="x", expand=True, padx=(5, 0)
-        )
+        ).pack(side="left", padx=(0, 8))
 
-        tk.Label(
-            controls, text="Dimensões da imagem (cm)", bg=PANEL, fg=TEXT,
-            font=("Segoe UI", 10, "bold")
-        ).pack(anchor="w", padx=20)
-        img_dims = tk.Frame(controls, bg=PANEL)
-        img_dims.pack(fill="x", padx=20, pady=(4, 8))
-        self._dimension_field(img_dims, "Largura imagem", self.polaroid_img_w).pack(
-            side="left", fill="x", expand=True, padx=(0, 5)
-        )
-        self._dimension_field(img_dims, "Altura imagem", self.polaroid_img_h).pack(
-            side="left", fill="x", expand=True, padx=(5, 0)
-        )
-
-        tk.Label(
-            controls, text="A imagem deve ser menor ou igual ao frame.\n"
-                           "A borda branca = (frame − imagem) / 2.",
-            bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)
-        ).pack(anchor="w", padx=20, pady=(0, 6))
+        self.polaroid_profiles = {
+            "Perfil 1": {"tw": "5.4", "th": "8.6", "iw": "4.6", "ih": "6.2", "bt": "0.5", "bl": "0.4"},
+            "Perfil 2": {"tw": "7.0", "th": "10.0", "iw": "6.0", "ih": "7.5", "bt": "0.8", "bl": "0.5"},
+            "Perfil 3": {"tw": "8.0", "th": "12.0", "iw": "7.0", "ih": "9.0", "bt": "1.0", "bl": "0.5"},
+        }
+        self.polaroid_profile_var = tk.StringVar(value="Perfil 1")
+        for name in self.polaroid_profiles:
+            tk.Radiobutton(
+                profiles_frame, text=name, variable=self.polaroid_profile_var, value=name,
+                command=self.apply_polaroid_profile, bg=PANEL, fg=TEXT,
+                activebackground=PANEL, font=("Segoe UI", 9)
+            ).pack(side="left", padx=(0, 6))
 
         tk.Checkbutton(
             controls, text="Borda preta na polaroid", variable=self.polaroid_border_var,
             command=self.refresh_polaroid_preview, bg=PANEL, fg=TEXT,
             activebackground=PANEL, font=("Segoe UI", 9)
-        ).pack(anchor="w", padx=20, pady=(0, 6))
+        ).pack(anchor="w", padx=20, pady=(0, 10))
+
+        config_notebook = ttk.Notebook(controls)
+        config_notebook.pack(fill="x", padx=20, pady=(0, 8))
+
+        tab_dims = ttk.Frame(config_notebook)
+        tab_borders = ttk.Frame(config_notebook)
+        tab_options = ttk.Frame(config_notebook)
+        config_notebook.add(tab_dims, text="Dimensões")
+        config_notebook.add(tab_borders, text="Bordas")
+        config_notebook.add(tab_options, text="Opções")
+
+        tk.Label(
+            tab_dims, text="Frame (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=10, pady=(8, 2))
+        total_dims = tk.Frame(tab_dims, bg=PANEL)
+        total_dims.pack(fill="x", padx=10, pady=(0, 6))
+        self._dimension_field(total_dims, "Largura", self.polaroid_total_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(total_dims, "Altura", self.polaroid_total_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            tab_dims, text="Foto (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=10, pady=(4, 2))
+        img_dims = tk.Frame(tab_dims, bg=PANEL)
+        img_dims.pack(fill="x", padx=10, pady=(0, 8))
+        self._dimension_field(img_dims, "Largura", self.polaroid_img_w).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(img_dims, "Altura", self.polaroid_img_h).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Label(
+            tab_borders, text="Bordas (cm)", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=10, pady=(8, 2))
+        border_dims = tk.Frame(tab_borders, bg=PANEL)
+        border_dims.pack(fill="x", padx=10, pady=(0, 6))
+        self._dimension_field(border_dims, "Superior", self.polaroid_border_top).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        self._dimension_field(border_dims, "Esquerda", self.polaroid_border_left).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+
+        tk.Checkbutton(
+            tab_options, text="Duplicar fotos para preencher A4", variable=self.polaroid_duplicate_var,
+            bg=PANEL, fg=TEXT,
+            activebackground=PANEL, font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=10, pady=(0, 4))
+
+        tk.Label(
+            tab_options, text="Quantidade de slots", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", padx=10, pady=(8, 2))
+        num_frame = tk.Frame(tab_options, bg=PANEL)
+        num_frame.pack(fill="x", padx=10, pady=(0, 8))
+        self.polaroid_num_spinbox = tk.Spinbox(
+            num_frame, from_=1, to=24, textvariable=self.polaroid_num_var,
+            width=6, command=self.build_polaroid_grid,
+            font=("Segoe UI", 10)
+        )
+        self.polaroid_num_spinbox.pack(side="left")
 
         tk.Label(
             controls, textvariable=self.polaroid_count_var, bg=PANEL, fg=MUTED,
@@ -1668,13 +1734,19 @@ class App:
             actions, "Exportar polaroid", self.export_polaroid
         ).pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.action_button(
+            actions, "Importar várias fotos", self.import_polaroid_multiple
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
             actions, "Exportar para A4", self.export_polaroid_a4
         ).pack(side="left", fill="x", expand=True, padx=(4, 0))
         actions2 = tk.Frame(preview_panel, bg=PANEL)
         actions2.pack(fill="x", padx=20, pady=(0, 16))
         self.action_button(
             actions2, "Imprimir no Windows", self.print_polaroid_a4
-        ).pack(side="left", fill="x", expand=True)
+        ).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.action_button(
+            actions2, "Limpar tudo", self.clear_polaroid_all, secondary=True
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
 
         self.update_polaroid_sheet_count()
 
@@ -1754,11 +1826,24 @@ class App:
         ih_px = int(round(ih / 2.54 * DPI))
         return tw, th, iw, ih, tw_px, th_px, iw_px, ih_px
 
-    def _make_polaroid_frame(self, image, tw_px, th_px, iw_px, ih_px):
+    def _make_polaroid_frame(self, image, tw_px, th_px):
+        dims = self.get_polaroid_dimensions()
+        if dims is None:
+            return None
+        _, _, iw, ih, _, _, iw_px, ih_px = dims
+        img_ratio = image.width / image.height
+        area_ratio = iw_px / ih_px
+        if (img_ratio > 1 and area_ratio < 1) or (img_ratio < 1 and area_ratio > 1):
+            image = image.rotate(90, expand=True)
         photo = cover_fit(image, iw_px, ih_px)
         frame = Image.new("RGB", (tw_px, th_px), "white")
         x = (tw_px - iw_px) // 2
-        y = (th_px - ih_px) // 2
+        border_top_cm = float(self.polaroid_border_top.get().replace(",", "."))
+        border_top_px = int(border_top_cm / 2.54 * DPI)
+        border_left_cm = float(self.polaroid_border_left.get().replace(",", "."))
+        border_left_px = int(border_left_cm / 2.54 * DPI)
+        y = border_top_px
+        x = border_left_px
         frame.paste(photo, (x, y))
         if self.polaroid_border_var.get():
             draw = ImageDraw.Draw(frame)
@@ -1778,11 +1863,11 @@ class App:
         dims = self.get_polaroid_dimensions()
         if dims is None:
             return None
-        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        tw, th, _, _, tw_px, th_px, _, _ = dims
         try:
             image = first_with_photo.get_image()
-            frame = self._make_polaroid_frame(image, tw_px, th_px, iw_px, ih_px)
-            return frame, tw, th, iw, ih
+            frame = self._make_polaroid_frame(image, tw_px, th_px)
+            return frame, tw, th
         except Exception as exc:
             messagebox.showerror("Erro", f"Não foi possível processar a imagem.\n\n{exc}")
             return None
@@ -1791,12 +1876,12 @@ class App:
         dims = self.get_polaroid_dimensions()
         if dims is None:
             return
-        tw, th, iw, ih, tw_px, th_px, iw_px, ih_px = dims
+        tw, th, _, _, tw_px, th_px, _, _ = dims
         first = next((s for s in self.polaroid_slots if s.path), None)
         if first:
             try:
                 image = first.get_image()
-                frame = self._make_polaroid_frame(image, tw_px, th_px, iw_px, ih_px)
+                frame = self._make_polaroid_frame(image, tw_px, th_px)
                 preview = frame.copy()
                 pw = max(100, self.polaroid_preview.winfo_width() - 10)
                 ph = max(100, self.polaroid_preview.winfo_height() - 10)
@@ -1805,7 +1890,7 @@ class App:
                 self.polaroid_preview.configure(image=self.polaroid_preview_img, text="")
                 count = sum(1 for s in self.polaroid_slots if s.path)
                 self.polaroid_info.configure(
-                    text=f"{count} polaroid(es) • {tw:g} × {th:g} cm • imagem {iw:g} × {ih:g} cm"
+                    text=f"{count} polaroid(es) • {tw:g} × {th:g} cm"
                 )
             except Exception:
                 pass
@@ -1818,7 +1903,7 @@ class App:
         built = self.build_polaroid_image()
         if built is None:
             return
-        image, tw, th, iw, ih = built
+        image, tw, th = built
         try:
             path = filedialog.asksaveasfilename(
                 title="Salvar Polaroid",
@@ -1843,13 +1928,57 @@ class App:
         except Exception as exc:
             messagebox.showerror("Erro", str(exc))
 
+    def apply_polaroid_profile(self):
+        name = self.polaroid_profile_var.get()
+        profile = self.polaroid_profiles.get(name)
+        if not profile:
+            return
+        self.polaroid_total_w.set(profile["tw"])
+        self.polaroid_total_h.set(profile["th"])
+        self.polaroid_img_w.set(profile["iw"])
+        self.polaroid_img_h.set(profile["ih"])
+        self.polaroid_border_top.set(profile["bt"])
+        self.polaroid_border_left.set(profile["bl"])
+        self.refresh_polaroid_preview()
+
+    def clear_polaroid_all(self):
+        for slot in self.polaroid_slots:
+            slot.clear()
+        self.refresh_polaroid_preview()
+
+    def import_polaroid_multiple(self):
+        try:
+            files = filedialog.askopenfilenames(
+                title="Selecionar fotos",
+                filetypes=[("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff")]
+            )
+        except KeyboardInterrupt:
+            return
+        if not files:
+            return
+        empty_slots = [s for s in self.polaroid_slots if s.path is None]
+        n = min(len(files), len(empty_slots))
+        if n == 0:
+            messagebox.showwarning("Sem slots", "Todos os slots já estão ocupados.")
+            return
+        for i in range(n):
+            empty_slots[i].path = files[i]
+            empty_slots[i].rotation = 0
+            empty_slots[i].refresh()
+        self.refresh_polaroid_preview()
+        if len(files) > len(empty_slots):
+            messagebox.showinfo(
+                "Importação parcial",
+                f"{n} foto(s) importada(s). {len(files) - len(empty_slots)} foto(s) restante(s) — aumente a quantidade de slots."
+            )
+
     def get_polaroid_sheet_grid(self):
         dims = self.get_polaroid_dimensions()
         if dims is None:
             return None
         _, _, _, _, tw_px, th_px, _, _ = dims
-        margin = int(round(1.5 / 2.54 * DPI))
-        gap = int(round(0.5 / 2.54 * DPI))
+        margin = int(round(1.0 / 2.54 * DPI))
+        gap = int(round(0.2 / 2.54 * DPI))
         usable_w = A4_W - 2 * margin
         usable_h = A4_H - 2 * margin
         if tw_px > usable_w or th_px > usable_h:
@@ -1902,25 +2031,37 @@ class App:
 
     def _compose_polaroid_a4(self, grid):
         dims = self.get_polaroid_dimensions()
-        _, _, _, _, tw_px, th_px, iw_px, ih_px = dims
+        _, _, _, _, tw_px, th_px, _, _ = dims
         margin, gap, w, h, cols, rows, start_x, start_y = grid
         sheet = Image.new("RGB", (A4_W, A4_H), "white")
         slots_with_photo = [s for s in self.polaroid_slots if s.path]
+        duplicate = self.polaroid_duplicate_var.get()
+        total_slots = cols * rows
         slot_idx = 0
         for r in range(rows):
             for c in range(cols):
                 x = start_x + c * (w + gap)
                 y = start_y + r * (h + gap)
-                if slot_idx < len(slots_with_photo):
-                    img = slots_with_photo[slot_idx].get_image()
-                    frame = self._make_polaroid_frame(img, tw_px, th_px, iw_px, ih_px)
-                    sheet.paste(frame, (x, y))
-                    slot_idx += 1
-                else:
-                    empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
-                    draw = ImageDraw.Draw(empty)
-                    draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
-                    sheet.paste(empty, (x, y))
+                if slots_with_photo:
+                    if duplicate:
+                        photo = slots_with_photo[slot_idx % len(slots_with_photo)]
+                    else:
+                        if slot_idx >= len(slots_with_photo):
+                            photo = None
+                        else:
+                            photo = slots_with_photo[slot_idx]
+                    if photo:
+                        img = photo.get_image()
+                        if img:
+                            frame = self._make_polaroid_frame(img, tw_px, th_px)
+                            sheet.paste(frame, (x, y))
+                            slot_idx += 1
+                            continue
+                empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
+                draw = ImageDraw.Draw(empty)
+                draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
+                sheet.paste(empty, (x, y))
+                slot_idx += 1
         return sheet
 
     def refresh_polaroid_a4_preview(self):
@@ -2874,13 +3015,16 @@ class App:
                         if img is None:
                             slot_i += 1
                             continue
-                        fitted = cover_fit(img, iw_px, ih_px)
+                        fitted = ImageOps.fit(img, (iw_px, ih_px), Image.Resampling.LANCZOS)
+                        fitted_rgba = fitted.convert("RGBA")
+                        gray = fitted.convert("L")
+                        alpha = gray.point(lambda p: 0 if p > 253 else 255)
+                        fitted_rgba.putalpha(alpha)
                         sticker = Image.new("RGBA", (tw_px, th_px), (0, 0, 0, 0))
                         sx = (tw_px - fitted.width) // 2
                         sy = (th_px - fitted.height) // 2
-                        sticker.paste(fitted, (sx, sy))
-                        sticker_rgba = sticker.convert("RGBA")
-                        sheet.paste(sticker_rgba, (x, y), sticker_rgba)
+                        sticker.paste(fitted_rgba, (sx, sy), fitted_rgba)
+                        sheet.paste(sticker, (x, y), sticker)
                         slot_i += 1
 
             if n_top > 0:
@@ -3401,16 +3545,21 @@ class App:
             return sheet
 
         total = COLS * ROWS
-        filled = []
-        while len(filled) < total:
-            filled.extend(loaded)
-        filled = filled[:total]
+        if self.montage_duplicate_var.get():
+            filled = []
+            while len(filled) < total:
+                filled.extend(loaded)
+            filled = filled[:total]
+        else:
+            filled = loaded[:total] + [None] * (total - len(loaded))
 
         for i, slot in enumerate(filled):
             row, col = divmod(i, COLS)
             x = MARGIN_X + col * (PHOTO_W + GAP_X)
             y = MARGIN_Y + row * (PHOTO_H + GAP_Y)
 
+            if slot is None:
+                continue
             img = slot.get_image()
             if img:
                 img = cover_fit(img, PHOTO_W, PHOTO_H, slot.zoom)
