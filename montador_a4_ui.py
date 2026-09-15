@@ -84,7 +84,7 @@ class PRINTDLGW(ctypes.Structure):
     ]
 
 
-def cover_fit(image, target_w, target_h, zoom=1.0):
+def cover_fit(image, target_w, target_h, zoom=1.0, offset_y=0):
     image = ImageOps.exif_transpose(image).convert("RGB")
     scale = max(target_w / image.width, target_h / image.height) * zoom
     nw = max(1, int(image.width * scale))
@@ -93,9 +93,10 @@ def cover_fit(image, target_w, target_h, zoom=1.0):
 
     # Centraliza a imagem. Se ela for maior, corta o excesso; se for
     # menor, mantém uma borda branca dentro do espaço de 6 x 9 cm.
+    # offset_y: deslocamento vertical em pixels (positivo = pra baixo)
     result = Image.new("RGB", (target_w, target_h), "white")
     source_left = max(0, (nw - target_w) // 2)
-    source_top = max(0, (nh - target_h) // 2)
+    source_top = max(0, (nh - target_h) // 2 - offset_y)
     source_right = min(nw, source_left + target_w)
     source_bottom = min(nh, source_top + target_h)
     visible = image.crop((source_left, source_top, source_right, source_bottom))
@@ -113,6 +114,7 @@ class SlotCard:
         self.path = None
         self.rotation = 0
         self.zoom = 1.0
+        self.offset_y = 0
         self.tk_img = None
 
         self.frame = tk.Frame(
@@ -153,6 +155,20 @@ class SlotCard:
         self.zoom_label.pack(side="left", padx=2)
         self._button(resize_controls, "+", lambda: self.resize_photo(0.05), 3).pack(side="left", padx=2)
         self._button(resize_controls, "Restaurar", self.reset_zoom, 8).pack(side="right", padx=2)
+
+        offset_controls = tk.Frame(self.frame, bg=PANEL)
+        offset_controls.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Label(
+            offset_controls, text="↕", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 9)
+        ).pack(side="left", padx=2)
+        self._button(offset_controls, "▲", lambda: self.move_photo(-15), 3).pack(side="left", padx=2)
+        self.offset_label = tk.Label(
+            offset_controls, text="0", width=4, bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 8, "bold")
+        )
+        self.offset_label.pack(side="left", padx=2)
+        self._button(offset_controls, "▼", lambda: self.move_photo(15), 3).pack(side="left", padx=2)
 
     def _button(self, parent, text, command, width=8):
         return tk.Button(
@@ -197,13 +213,22 @@ class SlotCard:
         self.refresh()
         self.callback()
 
+    def move_photo(self, amount):
+        if not self.path:
+            return
+        self.offset_y = max(-300, min(300, self.offset_y + amount))
+        self.offset_label.configure(text=str(self.offset_y))
+        self.callback()
+
     def clear(self):
         self.path = None
         self.rotation = 0
         self.zoom = 1.0
+        self.offset_y = 0
         self.tk_img = None
         self.preview.configure(image="", text="Clique para adicionar")
         self.zoom_label.configure(text="100%")
+        self.offset_label.configure(text="0")
         self.callback()
 
     def clone(self):
@@ -217,6 +242,7 @@ class SlotCard:
         target.path = self.path
         target.rotation = self.rotation
         target.zoom = self.zoom
+        target.offset_y = self.offset_y
         target.tk_img = None
         target.refresh()
         target.callback()
@@ -254,6 +280,7 @@ class PolaroidSlotCard:
         self.callback = callback
         self.path = None
         self.rotation = 0
+        self.offset_y = 0
         self.tk_img = None
 
         self.frame = tk.Frame(
@@ -290,6 +317,8 @@ class PolaroidSlotCard:
         self._button(controls, "Adicionar", self.choose, 8).pack(side="left", padx=2)
         self._button(controls, "↺", lambda: self.rotate(-90), 3).pack(side="left", padx=2)
         self._button(controls, "↻", lambda: self.rotate(90), 3).pack(side="left", padx=2)
+        self._button(controls, "▲", lambda: self.move_photo(-15), 3).pack(side="left", padx=2)
+        self._button(controls, "▼", lambda: self.move_photo(15), 3).pack(side="left", padx=2)
         self._button(controls, "✕", self.clear, 3).pack(side="right", padx=2)
 
     def _button(self, parent, text, command, width=8):
@@ -320,9 +349,16 @@ class PolaroidSlotCard:
         self.refresh()
         self.callback()
 
+    def move_photo(self, amount):
+        if not self.path:
+            return
+        self.offset_y = max(-300, min(300, self.offset_y + amount))
+        self.callback()
+
     def clear(self):
         self.path = None
         self.rotation = 0
+        self.offset_y = 0
         self.tk_img = None
         self.preview.configure(image="", text="Clique para adicionar")
         self.file_label.configure(text="Sem foto")
@@ -505,6 +541,7 @@ class App:
         self.polaroid_path = None
         self.polaroid_rotation = 0
         self.polaroid_preview_img = None
+        self.polaroid_preview_idx = 0
         self.polaroid_total_w = tk.StringVar(value="5.4")
         self.polaroid_total_h = tk.StringVar(value="8.6")
         self.polaroid_img_w = tk.StringVar(value="4.6")
@@ -1717,7 +1754,21 @@ class App:
             preview_panel, text="Escolha uma foto para começar",
             bg="#E5E0D6", fg=MUTED, font=("Segoe UI", 11)
         )
-        self.polaroid_preview.pack(fill="both", expand=True, padx=20, pady=12)
+        self.polaroid_preview.pack(fill="both", expand=True, padx=20, pady=12, ipady=80)
+
+        nav_row = tk.Frame(preview_panel, bg=PANEL)
+        nav_row.pack(fill="x", padx=20, pady=(0, 8))
+        self.action_button(
+            nav_row, "◀", self.polaroid_prev_preview, secondary=True
+        ).pack(side="left", padx=(0, 4))
+        self.polaroid_preview_label = tk.Label(
+            nav_row, text="", bg=PANEL, fg=TEXT,
+            font=("Segoe UI", 9)
+        )
+        self.polaroid_preview_label.pack(side="left", fill="x", expand=True)
+        self.action_button(
+            nav_row, "▶", self.polaroid_next_preview, secondary=True
+        ).pack(side="left", padx=(4, 0))
 
         tk.Label(
             preview_panel, text="Prévia na folha A4", bg=PANEL, fg=TEXT,
@@ -1826,7 +1877,7 @@ class App:
         ih_px = int(round(ih / 2.54 * DPI))
         return tw, th, iw, ih, tw_px, th_px, iw_px, ih_px
 
-    def _make_polaroid_frame(self, image, tw_px, th_px):
+    def _make_polaroid_frame(self, image, tw_px, th_px, offset_y=0):
         dims = self.get_polaroid_dimensions()
         if dims is None:
             return None
@@ -1835,7 +1886,7 @@ class App:
         area_ratio = iw_px / ih_px
         if (img_ratio > 1 and area_ratio < 1) or (img_ratio < 1 and area_ratio > 1):
             image = image.rotate(90, expand=True)
-        photo = cover_fit(image, iw_px, ih_px)
+        photo = cover_fit(image, iw_px, ih_px, offset_y=offset_y)
         frame = Image.new("RGB", (tw_px, th_px), "white")
         x = (tw_px - iw_px) // 2
         border_top_cm = float(self.polaroid_border_top.get().replace(",", "."))
@@ -1866,37 +1917,65 @@ class App:
         tw, th, _, _, tw_px, th_px, _, _ = dims
         try:
             image = first_with_photo.get_image()
-            frame = self._make_polaroid_frame(image, tw_px, th_px)
+            frame = self._make_polaroid_frame(image, tw_px, th_px, offset_y=first_with_photo.offset_y)
             return frame, tw, th
         except Exception as exc:
             messagebox.showerror("Erro", f"Não foi possível processar a imagem.\n\n{exc}")
             return None
+
+    def polaroid_prev_preview(self):
+        slots_with_photo = [s for s in self.polaroid_slots if s.path]
+        if not slots_with_photo:
+            return
+        self.polaroid_preview_idx = (self.polaroid_preview_idx - 1) % len(slots_with_photo)
+        self._update_polaroid_single_preview(slots_with_photo)
+
+    def polaroid_next_preview(self):
+        slots_with_photo = [s for s in self.polaroid_slots if s.path]
+        if not slots_with_photo:
+            return
+        self.polaroid_preview_idx = (self.polaroid_preview_idx + 1) % len(slots_with_photo)
+        self._update_polaroid_single_preview(slots_with_photo)
+
+    def _update_polaroid_single_preview(self, slots_with_photo):
+        dims = self.get_polaroid_dimensions()
+        if dims is None:
+            return
+        tw, th, _, _, tw_px, th_px, _, _ = dims
+        idx = min(self.polaroid_preview_idx, len(slots_with_photo) - 1)
+        slot = slots_with_photo[idx]
+        try:
+            image = slot.get_image()
+            frame = self._make_polaroid_frame(image, tw_px, th_px, offset_y=slot.offset_y)
+            preview = frame.copy()
+            pw = max(200, self.polaroid_preview.winfo_width() - 20)
+            ph = max(200, self.polaroid_preview.winfo_height() - 20)
+            preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
+            self.polaroid_preview_img = ImageTk.PhotoImage(preview)
+            self.polaroid_preview.configure(image=self.polaroid_preview_img, text="")
+            self.polaroid_preview_label.configure(
+                text=f"Polaroid {idx+1} de {len(slots_with_photo)}"
+            )
+        except Exception:
+            pass
 
     def refresh_polaroid_preview(self):
         dims = self.get_polaroid_dimensions()
         if dims is None:
             return
         tw, th, _, _, tw_px, th_px, _, _ = dims
-        first = next((s for s in self.polaroid_slots if s.path), None)
-        if first:
-            try:
-                image = first.get_image()
-                frame = self._make_polaroid_frame(image, tw_px, th_px)
-                preview = frame.copy()
-                pw = max(100, self.polaroid_preview.winfo_width() - 10)
-                ph = max(100, self.polaroid_preview.winfo_height() - 10)
-                preview.thumbnail((pw, ph), Image.Resampling.LANCZOS)
-                self.polaroid_preview_img = ImageTk.PhotoImage(preview)
-                self.polaroid_preview.configure(image=self.polaroid_preview_img, text="")
-                count = sum(1 for s in self.polaroid_slots if s.path)
-                self.polaroid_info.configure(
-                    text=f"{count} polaroid(es) • {tw:g} × {th:g} cm"
-                )
-            except Exception:
-                pass
+        slots_with_photo = [s for s in self.polaroid_slots if s.path]
+        if slots_with_photo:
+            self.polaroid_preview_idx = min(self.polaroid_preview_idx, len(slots_with_photo) - 1)
+            self._update_polaroid_single_preview(slots_with_photo)
+            count = len(slots_with_photo)
+            self.polaroid_info.configure(
+                text=f"{count} polaroid(es) • {tw:g} × {th:g} cm"
+            )
         else:
             self.polaroid_preview.configure(image="", text="Escolha uma foto para começar")
             self.polaroid_info.configure(text="Nenhuma foto selecionada")
+            self.polaroid_preview_label.configure(text="")
         self.refresh_polaroid_a4_preview()
 
     def export_polaroid(self):
@@ -2053,14 +2132,10 @@ class App:
                     if photo:
                         img = photo.get_image()
                         if img:
-                            frame = self._make_polaroid_frame(img, tw_px, th_px)
+                            frame = self._make_polaroid_frame(img, tw_px, th_px, offset_y=photo.offset_y)
                             sheet.paste(frame, (x, y))
                             slot_idx += 1
                             continue
-                empty = Image.new("RGB", (tw_px, th_px), "#F0F0F0")
-                draw = ImageDraw.Draw(empty)
-                draw.rectangle((0, 0, tw_px - 1, th_px - 1), outline=(200, 200, 200), width=2)
-                sheet.paste(empty, (x, y))
                 slot_idx += 1
         return sheet
 
@@ -3562,7 +3637,7 @@ class App:
                 continue
             img = slot.get_image()
             if img:
-                img = cover_fit(img, PHOTO_W, PHOTO_H, slot.zoom)
+                img = cover_fit(img, PHOTO_W, PHOTO_H, slot.zoom, offset_y=slot.offset_y)
                 sheet.paste(img, (x, y))
                 if self.border_var.get():
                     draw.rectangle(
